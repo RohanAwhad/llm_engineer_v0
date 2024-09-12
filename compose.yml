@@ -1,0 +1,14 @@
+services:
+  hello-world:
+    build: 
+      context: python_interpreter
+      dockerfile: Dockerfile
+    platform: linux/amd64
+    container_name: hello-world
+    volumes:
+      - ./workspaces/hello_world:/app
+      - ./play:/tmp
+    working_dir: /app
+    stdin_open: true
+    tty: true
+    command: tail -f /dev/null
