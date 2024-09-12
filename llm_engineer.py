@@ -3,6 +3,7 @@ import openai
 import os
 import re
 import subprocess
+from typing import Optional
 
 
 @dataclasses.dataclass
@@ -26,6 +27,16 @@ I need 3 tools, one brain llm
   2. Bash Interpreter
   3. File Rewriter
 '''
+
+
+def get_input_from_user() -> str:
+  messages = []
+  while True:
+    user_input = input()
+    messages.append(user_input)
+    if END_OF_INPUT in user_input: break
+  content = '\n'.join(messages).replace(END_OF_INPUT, '')
+  return content.strip()
 
 
 @dataclasses.dataclass
@@ -111,17 +122,60 @@ def python_interpreter_tool(container_name: str, code: str, env_name: str) -> tu
     # if none of the above, give control back to user. User can enter a message and retry the conversation or end the execution
     user_msg = get_input_from_user()
 
-def get_input_from_user() -> str:
-  messages = []
-  while True:
-    user_input = input()
-    messages.append(user_input)
-    if END_OF_INPUT in user_input: break
-  content = '\n'.join(messages).replace(END_OF_INPUT, '')
-  return content.strip()
+
+def rewrite_file(workspace: str, filename: str, code: str, cmd: str) -> Optional[str]:
+  '''
+  Its job is to rewrite the file contents based on the cmd.
+  The cmd would be either ADD or REMOVE.
+    - ADD will be used to integreate the new code block into the current file
+    - REMOVE will be used to remove a certain function from the current file
+
+  If the filename does not exist or the file is empty, create a new file and add the contents to it directly
+  If the file has content, then ask the llm to regenerate the whole file with either addition of the code or deletion.
+  '''
+  if cmd not in ("ADD", "REMOVE"): return f"Error: Command should be one of 'ADD' or 'REMOVE', but got '{cmd}'"
+
+  FILEPATH = f'{workspace}/{filename}'
+  if not os.path.exists(FILEPATH):
+    if cmd == "ADD":
+      with open(FILEPATH, 'w') as f: f.write(code)
+    else:
+      # TODO: (rohan) this shouldn't happen. If the file doesn't exist, then the remove command should not have been called
+      return None
+
+  # get the contents of the file
+  with open('prompts/file_rewriter.txt', 'r') as f: sys_prompt = f.read()
+  history = [Message('system', sys_prompt),]
+
+  with open(FILEPATH, 'r') as f: file_contents = f.read()
+  user_msg = f"CURRENT_FILE_CONTENTS:\n```python\n{file_contents.strip()}\n```\n\n"
+  user_msg += f"CONTENT_TO_MODIFY:\n```python\n{code.strip()}\n```\n\n"
+  user_msg += f'COMMAND: {cmd}'
+
+  history.append(Message('user', user_msg))
+  print("\033[92m" + str(history[-1]) + "\033[0m")
+
+  code_ptrn = re.compile(r"```python(.*?)```", re.DOTALL)
+  max_retries = 3
+  while max_retries > 0:
+    max_retries -= 1
+    llm_res = llm_call("meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo", history, temperature=0.8)
+    print('\033[94m' + f'Assistant:{llm_res}'+'\033[0m') 
+
+    # check if python code exists
+    match = re.search(code_ptrn, llm_res)
+    if match:
+      new_code = match.group(1).strip()
+      with open(FILEPATH, 'w') as f: f.write(new_code)
+      return None
+
+  return "Error: was unable to modify the contents"
+
 
 
 if __name__ == '__main__':
-  out, err = python_interpreter_tool(container_name='hello-world', code="#should print hello-world\nprint)", env_name='python_interpreter_env')
-  print("Output:", out)
-  print('err:', err)
+  workspace = './workspaces/hello_world'
+  filename = 'hello_world.py'
+  cmd = 'ADD'
+  code = "def greet_user(name: str): print(f'Hello, {name}')"
+  rewrite_file(workspace, filename, code, cmd)
