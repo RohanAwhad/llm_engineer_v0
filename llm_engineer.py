@@ -173,14 +173,16 @@ def rewrite_file(workspace: str, filename: str, code: str, cmd: str) -> Optional
   return "Error: was unable to modify the contents"
 
 
-def brain():
+def brain(workspace):
   with open('prompts/brain.txt', 'r') as f: sys_prompt = f.read()
   history = [Message('system', sys_prompt), ]
   user_turn = True
 
   tool_name_ptrn = re.compile(r'TOOL_NAME: ([\d\w]+)', re.DOTALL)
-  code_ptrn = re.compile(r"```python(.*?)```", re.DOTALL)
+  python_code_ptrn = re.compile(r"```python(.*?)```", re.DOTALL)
   response_ptrn = re.compile(r"```response(.*?)```", re.DOTALL)
+  filename_ptrn = re.compile(r"```filename(.*?)```", re.DOTALL)
+  command_ptrn = re.compile(r"```command(.*?)```", re.DOTALL)
 
   MAX_RETRIES = 3
   max_retries = MAX_RETRIES
@@ -196,8 +198,9 @@ def brain():
     match = re.search(tool_name_ptrn, llm_res)
     if match:
       tool_name = match.group(1)
+
       if tool_name == 'python_interpreter':
-        code_match = re.search(code_ptrn, llm_res)
+        code_match = re.search(python_code_ptrn, llm_res)
         if code_match:
           code = code_match.group(1).strip()
           # call python interpreter
@@ -206,17 +209,50 @@ def brain():
           user_turn = False
           max_retries = MAX_RETRIES
           continue
-          pass
         else:
-          # TODO: (rohan): handle code not found error
           user_turn = False
+          max_retries -= 1
           continue
-          pass
+
+      elif tool_name == 'file_reader':
+        filename_match = re.search(filename_ptrn, llm_res)
+        if filename_match:
+          filename = filename_match.group(1).strip()
+          absolute_fp = f'{workspace}/{filename}'
+          if os.path.exists(absolute_fp):
+            with open(absolute_fp, 'r') as f: file_contents = f.read()
+            history.extend([Message('assistant', llm_res), Message('user', f'File Contents:\n\n```\n{file_contents}\n```'), ])
+          else:
+            history.extend([Message('assistant', llm_res), Message('user', f'File does not exist. If you want to add content just call file writer. It will handle creation'), ])
+
+          user_turn = False
+          max_retries = MAX_RETRIES
+        else:
+          user_turn = False
+          max_retries -= 1
+          continue
+
+      elif tool_name == 'file_writer':
+        filename_match = re.search(filename_ptrn, llm_res)
+        command_match = re.search(command_ptrn, llm_res)
+        code_match = re.search(python_code_ptrn, llm_res)
+        if filename_match and command_match and code_match:
+          filename = filename_match.group(1).strip()
+          cmd = command_match.group(1).strip().upper()
+          code = code_match.group(1).strip()
+          out = rewrite_file(workspace, filename, code, cmd)
+          history.extend([Message('assistant', llm_res), Message('user', f'TOOL_OUTPUT:\n\n{out}') ])
+          user_turn = False
+          max_retries = MAX_RETRIES
+        else:
+          user_turn = False
+          max_retries -= 1
+          continue
+
       else:
-        # TODO: (rohan) handle wrong tool_name
         user_turn = False
+        max_retries -= 1
         continue
-        pass
 
     # check if responding to user
     match = re.search(response_ptrn, llm_res)
@@ -226,6 +262,7 @@ def brain():
       history.append(Message('assistant', llm_res))
       user_turn = True
       max_retries = MAX_RETRIES
+      print("\033[92m" + response + "\033[0m")
       continue
 
     else:
@@ -235,9 +272,9 @@ def brain():
 
 
 if __name__ == '__main__':
-  brain()
-  '''
   workspace = './workspaces/hello_world'
+  brain(workspace)
+  '''
   filename = 'hello_world.py'
   cmd = 'ADD'
   code = "def greet_user(name: str): print(f'Hello, {name}')"
