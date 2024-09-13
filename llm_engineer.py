@@ -124,7 +124,7 @@ def python_interpreter_tool(container_name: str, code: str, env_name: str) -> tu
     user_msg = get_input_from_user()
 
 
-def rewrite_file(workspace: str, filename: str, code: str, cmd: str) -> Optional[str]:
+def rewrite_file(workspace: str, filename: str, diff: str) -> Optional[str]:
   '''
   Its job is to rewrite the file contents based on the cmd.
   The cmd would be either ADD or REMOVE.
@@ -134,15 +134,10 @@ def rewrite_file(workspace: str, filename: str, code: str, cmd: str) -> Optional
   If the filename does not exist or the file is empty, create a new file and add the contents to it directly
   If the file has content, then ask the llm to regenerate the whole file with either addition of the code or deletion.
   '''
-  if cmd not in ("ADD", "REMOVE"): return f"Error: Command should be one of 'ADD' or 'REMOVE', but got '{cmd}'"
 
   FILEPATH = f'{workspace}/{filename}'
   if not os.path.exists(FILEPATH):
-    if cmd == "ADD":
-      with open(FILEPATH, 'w') as f: f.write(code)
-    else:
-      # TODO: (rohan) this shouldn't happen. If the file doesn't exist, then the remove command should not have been called
-      return None
+      with open(FILEPATH, 'w') as f: pass
 
   # get the contents of the file
   with open('prompts/file_rewriter.txt', 'r') as f: sys_prompt = f.read()
@@ -150,8 +145,7 @@ def rewrite_file(workspace: str, filename: str, code: str, cmd: str) -> Optional
 
   with open(FILEPATH, 'r') as f: file_contents = f.read()
   user_msg = f"CURRENT_FILE_CONTENTS:\n```python\n{file_contents.strip()}\n```\n\n"
-  user_msg += f"CONTENT_TO_MODIFY:\n```python\n{code.strip()}\n```\n\n"
-  user_msg += f'COMMAND: {cmd}'
+  user_msg += f"DIFF:\n```diff\n{diff.strip()}\n```\n\n"
 
   history.append(Message('user', user_msg))
   print("\033[92m" + str(history[-1]) + "\033[0m")
@@ -181,20 +175,19 @@ def brain(workspace):
   tool_name_ptrn = re.compile(r'TOOL_NAME: ([\d\w]+)', re.DOTALL)
   python_code_ptrn = re.compile(r"```python(.*?)```", re.DOTALL)
   code_ptrn = re.compile(r"```code(.*?)```", re.DOTALL)
+  diff_ptrn = re.compile(r"```diff(.*?)```", re.DOTALL)
   response_ptrn = re.compile(r"```response(.*?)```", re.DOTALL)
   filename_ptrn = re.compile(r"```filename(.*?)```", re.DOTALL)
   command_ptrn = re.compile(r"```command(.*?)```", re.DOTALL)
 
   MAX_RETRIES = 3
   max_retries = MAX_RETRIES
-  call_llm = True
   while True:
     if user_turn:
       history.append(Message('user', get_input_from_user()))
 
     print(f"\033[93m{history[-1]}\033[0m")
     llm_res = llm_call("meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo", history, temperature=0.8)
-    call_llm = False
     print("\033[95m" + str(llm_res) + "\033[0m")
 
     # check if tool is called?
@@ -237,13 +230,11 @@ def brain(workspace):
 
       elif tool_name == 'file_writer':
         filename_match = re.search(filename_ptrn, llm_res)
-        command_match = re.search(command_ptrn, llm_res)
-        code_match = re.search(code_ptrn, llm_res)
-        if filename_match and command_match and code_match:
+        diff_match = re.search(diff_ptrn, llm_res)
+        if filename_match and diff_match:
           filename = filename_match.group(1).strip()
-          cmd = command_match.group(1).strip().upper()
-          code = code_match.group(1).strip()
-          out = rewrite_file(workspace, filename, code, cmd)
+          diff = diff_match.group(1).strip()
+          out = rewrite_file(workspace, filename, diff)
           history.extend([Message('assistant', llm_res), Message('user', f'TOOL_OUTPUT:\n\n{out}') ])
           user_turn = False
           max_retries = MAX_RETRIES
@@ -275,7 +266,8 @@ def brain(workspace):
 
 
 if __name__ == '__main__':
-  workspace = './workspaces/cse507_practice_1_classification'
+  import sys
+  workspace = sys.argv[1]
   brain(workspace)
   '''
   filename = 'hello_world.py'

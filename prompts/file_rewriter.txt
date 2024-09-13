@@ -66,16 +66,14 @@ Conclusion:
 In conclusion, the ResNet 50 model achieved good performance on most of the MedMNIST datasets, with an average AUC of 0.88 and an average ACC of 0.81. The model performed particularly well on the chestmnist, pathmnist, and bloodmnist datasets, but did not perform as well on the retinamnist and fracturemnist3d datasets. Overall, the results demonstrate the effectiveness of the ResNet 50 model for medical image classification tasks.
 ```
 
-CONTENT_TO_MODIFY:
+DIFF:
+```diff
++ Based on the results provided, the model's performance on the pathmnist dataset was slightly better than the reported results in the literature, with an AUC of 0.979 and ACC of 0.84 compared to the reported AUC of 0.990 and ACC of 0.911. However, the model's performance on the breastmnist dataset was significantly lower than the reported results, with an AUC of 0.719 and ACC of 0.677 compared to the reported AUC of 0.857 and ACC of 0.812.
+
++ For the nodulemnist3d dataset, the model's performance was slightly lower than the reported results, with an AUC of 0.839 and ACC of 0.806 compared to the reported AUC of 0.993 and ACC of 0.907. However, the model's performance on the fracturemnist3d dataset was significantly lower than the reported results, with an AUC of 0.643 compared to the reported AUC of 0.839.
+
++ Overall, the model's performance on the pathmnist and nodulemnist3d datasets was relatively close to the reported results, while the model's performance on the breastmnist and fracturemnist3d datasets was significantly lower than the reported results.
 ```
- Based on the results provided, the model's performance on the pathmnist dataset was slightly better than the reported results in the literature, with an AUC of 0.979 and ACC of 0.84 compared to the reported AUC of 0.990 and ACC of 0.911. However, the model's performance on the breastmnist dataset was significantly lower than the reported results, with an AUC of 0.719 and ACC of 0.677 compared to the reported AUC of 0.857 and ACC of 0.812.
-
-For the nodulemnist3d dataset, the model's performance was slightly lower than the reported results, with an AUC of 0.839 and ACC of 0.806 compared to the reported AUC of 0.993 and ACC of 0.907. However, the model's performance on the fracturemnist3d dataset was significantly lower than the reported results, with an AUC of 0.643 compared to the reported AUC of 0.839.
-
-Overall, the model's performance on the pathmnist and nodulemnist3d datasets was relatively close to the reported results, while the model's performance on the breastmnist and fracturemnist3d datasets was significantly lower than the reported results.
-```
-
-COMMAND: ADD
 
 **Output**:
 
