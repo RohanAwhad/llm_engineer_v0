@@ -180,18 +180,21 @@ def brain(workspace):
 
   tool_name_ptrn = re.compile(r'TOOL_NAME: ([\d\w]+)', re.DOTALL)
   python_code_ptrn = re.compile(r"```python(.*?)```", re.DOTALL)
+  code_ptrn = re.compile(r"```code(.*?)```", re.DOTALL)
   response_ptrn = re.compile(r"```response(.*?)```", re.DOTALL)
   filename_ptrn = re.compile(r"```filename(.*?)```", re.DOTALL)
   command_ptrn = re.compile(r"```command(.*?)```", re.DOTALL)
 
   MAX_RETRIES = 3
   max_retries = MAX_RETRIES
+  call_llm = True
   while True:
     if user_turn:
       history.append(Message('user', get_input_from_user()))
 
     print(f"\033[93m{history[-1]}\033[0m")
     llm_res = llm_call("meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo", history, temperature=0.8)
+    call_llm = False
     print("\033[95m" + str(llm_res) + "\033[0m")
 
     # check if tool is called?
@@ -235,7 +238,7 @@ def brain(workspace):
       elif tool_name == 'file_writer':
         filename_match = re.search(filename_ptrn, llm_res)
         command_match = re.search(command_ptrn, llm_res)
-        code_match = re.search(python_code_ptrn, llm_res)
+        code_match = re.search(code_ptrn, llm_res)
         if filename_match and command_match and code_match:
           filename = filename_match.group(1).strip()
           cmd = command_match.group(1).strip().upper()
@@ -253,26 +256,26 @@ def brain(workspace):
         user_turn = False
         max_retries -= 1
         continue
-
     # check if responding to user
-    match = re.search(response_ptrn, llm_res)
-    if match:
-      # responding back to user
-      response = match.group(1).strip()
-      history.append(Message('assistant', llm_res))
-      user_turn = True
-      max_retries = MAX_RETRIES
-      print("\033[92m" + response + "\033[0m")
-      continue
-
     else:
-      user_turn = False
-      max_retries -= 1
-      continue
+      match = re.search(response_ptrn, llm_res)
+      if match:
+        # responding back to user
+        response = match.group(1).strip()
+        history.append(Message('assistant', llm_res))
+        user_turn = True
+        max_retries = MAX_RETRIES
+        print("\033[92m" + response + "\033[0m")
+        continue
+
+      else:
+        user_turn = False
+        max_retries -= 1
+        continue
 
 
 if __name__ == '__main__':
-  workspace = './workspaces/hello_world'
+  workspace = './workspaces/cse507_practice_1_classification'
   brain(workspace)
   '''
   filename = 'hello_world.py'

@@ -23,10 +23,16 @@ You are a Language Model. User will be chatting with you. They will have a few t
   - Description:
     - Call this tool with a filename, code modification and a command from {"ADD", "REMOVE"}
     - This tool will update the file at filename with the code that's provided in the modification. The update will either remove the code or add the code in the file
-    - Each argument should be enclosed in separate triple backticks like this (```filename) or (```python) or (```command)
+    - Command:
+      - ADD: Add the given content to the file
+      - REMOVE: Remove the given content from the file
+    - Each argument should be enclosed in separate triple backticks like this (```filename) or (```code) or (```command)
     - Example:
       ```command
       ADD
+      ```
+      ```code
+      console.log("Hello, World!");
       ```
 
 
