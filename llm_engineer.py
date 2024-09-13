@@ -30,6 +30,7 @@ I need 3 tools, one brain llm
 
 
 def get_input_from_user() -> str:
+  print('User >')
   messages = []
   while True:
     user_input = input()
@@ -102,13 +103,6 @@ def python_interpreter_tool(container_name: str, code: str, env_name: str) -> tu
     history.append(Message(role='assistant', content=llm_res))
     print(f"\033[94m{history[-1]}\033[0m")
 
-    # check if python code exists
-    match = re.search(code_ptrn, llm_res)
-    if match:
-      new_code = match.group(1).strip()
-      with open(f'{LOCAL_DIR}/{filename}', 'w') as f: f.write(new_code)
-      continue
-
     # check if package installation exists
     pkg_req_ptrn = re.compile(r"Need Package: ([\d\w-]+)")
     match = re.search(pkg_req_ptrn, llm_res)
@@ -117,6 +111,13 @@ def python_interpreter_tool(container_name: str, code: str, env_name: str) -> tu
       # wait for confirmation from user.
       user_feedback = input(f"Need you to install this package: {package_request}. Confirm that you have installed it (Y/n): ")
       user_msg = "Package has been installed." if user_feedback == 'Y' else f"Package was not installed. {user_feedback}"
+      continue
+
+    # check if python code exists
+    match = re.search(code_ptrn, llm_res)
+    if match:
+      new_code = match.group(1).strip()
+      with open(f'{LOCAL_DIR}/{filename}', 'w') as f: f.write(new_code)
       continue
 
     # if none of the above, give control back to user. User can enter a message and retry the conversation or end the execution
@@ -172,10 +173,73 @@ def rewrite_file(workspace: str, filename: str, code: str, cmd: str) -> Optional
   return "Error: was unable to modify the contents"
 
 
+def brain():
+  with open('prompts/brain.txt', 'r') as f: sys_prompt = f.read()
+  history = [Message('system', sys_prompt), ]
+  user_turn = True
+
+  tool_name_ptrn = re.compile(r'TOOL_NAME: ([\d\w]+)', re.DOTALL)
+  code_ptrn = re.compile(r"```python(.*?)```", re.DOTALL)
+  response_ptrn = re.compile(r"```response(.*?)```", re.DOTALL)
+
+  MAX_RETRIES = 3
+  max_retries = MAX_RETRIES
+  while True:
+    if user_turn:
+      history.append(Message('user', get_input_from_user()))
+
+    print(f"\033[93m{history[-1]}\033[0m")
+    llm_res = llm_call("meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo", history, temperature=0.8)
+    print("\033[95m" + str(llm_res) + "\033[0m")
+
+    # check if tool is called?
+    match = re.search(tool_name_ptrn, llm_res)
+    if match:
+      tool_name = match.group(1)
+      if tool_name == 'python_interpreter':
+        code_match = re.search(code_ptrn, llm_res)
+        if code_match:
+          code = code_match.group(1).strip()
+          # call python interpreter
+          exec_output, exec_err = python_interpreter_tool(container_name='python_interpreter', code=code, env_name='python_interpreter_env')
+          history.extend([Message('assistant', llm_res), Message('user', f'TOOL_OUTPUT:\n\nOutput:\n"""\n{exec_output}\n"""\n\nError:\n"""\n{exec_err}\n"""')])
+          user_turn = False
+          max_retries = MAX_RETRIES
+          continue
+          pass
+        else:
+          # TODO: (rohan): handle code not found error
+          user_turn = False
+          continue
+          pass
+      else:
+        # TODO: (rohan) handle wrong tool_name
+        user_turn = False
+        continue
+        pass
+
+    # check if responding to user
+    match = re.search(response_ptrn, llm_res)
+    if match:
+      # responding back to user
+      response = match.group(1).strip()
+      history.append(Message('assistant', llm_res))
+      user_turn = True
+      max_retries = MAX_RETRIES
+      continue
+
+    else:
+      user_turn = False
+      max_retries -= 1
+      continue
+
 
 if __name__ == '__main__':
+  brain()
+  '''
   workspace = './workspaces/hello_world'
   filename = 'hello_world.py'
   cmd = 'ADD'
   code = "def greet_user(name: str): print(f'Hello, {name}')"
   rewrite_file(workspace, filename, code, cmd)
+  '''
