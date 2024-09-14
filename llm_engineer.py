@@ -28,7 +28,6 @@ def llm_call(model: str, messages: list[Message], temperature: float) -> str:
     :param temperature: The temperature setting for randomness in the response.
     :return: The content of the response from the model.
     """
-    import re  # Importing regex module for pattern matching
     client = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])  # Initialize OpenAI client
     res = client.chat.completions.create(
         model=model,
@@ -47,30 +46,31 @@ def get_input_from_user() -> str:
     """
     print('User >')
     messages = []
+    read_plan_pattern = re.compile(r"<\|READ_PLAN_START\|>(.*?)<\|READ_PLAN_END\|>", re.DOTALL)
     while True:
         user_input = input()
+        # Check for <|READ_PLAN_START|> and <|READ_PLAN_END|> keywords
+        match = read_plan_pattern.search(user_input)
+        if match:
+            # Extract the file path
+            file_path = match.group(1).strip()
+            if os.path.exists(file_path):
+                # Read file contents
+                with open(file_path, 'r') as f:
+                    file_content = f.read()
+                # Append the file content to the user input
+                user_input += '\n' + file_content
+                print('PLAN:\n', file_content)
+            else:
+                print(f"File at path {file_path} does not exist.")
+            # Remove the filepath and keywords from the content
+            user_input = read_plan_pattern.sub('', user_input)
+
         messages.append(user_input)
         if END_OF_INPUT in user_input: 
             break
+        
     content = '\n'.join(messages).replace(END_OF_INPUT, '')
-    
-    # Check for <|READ_PLAN_START|> and <|READ_PLAN_END|> keywords
-    read_plan_pattern = re.compile(r"<\|READ_PLAN_START\|>(.*?)<\|READ_PLAN_END\|>", re.DOTALL)
-    match = read_plan_pattern.search(content)
-    if match:
-        # Extract the file path
-        file_path = match.group(1).strip()
-        if os.path.exists(file_path):
-            # Read file contents
-            with open(file_path, 'r') as f:
-                file_content = f.read()
-            # Append the file content to the user input
-            content += '\n' + file_content
-        else:
-            print(f"File at path {file_path} does not exist.")
-        # Remove the filepath and keywords from the content
-        content = read_plan_pattern.sub('', content)
-
     return content.strip()
 
 def rewrite_file(workspace: str, filename: str, diff: str) -> Optional[str]:
