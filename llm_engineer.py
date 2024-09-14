@@ -61,7 +61,7 @@ def rewrite_file(workspace: str, filename: str, diff: str) -> Optional[str]:
   history.append(Message('user', user_msg))
   print("\033[92m" + str(history[-1]) + "\033[0m")
 
-  code_ptrn = re.compile(r"```python(.*?)```", re.DOTALL)
+  code_ptrn = re.compile(r"<\|UPDATED_FILE_START\|>(.*?)<\|UPDATED_FILE_END\|>", re.DOTALL)
   max_retries = 3
   while max_retries > 0:
     max_retries -= 1

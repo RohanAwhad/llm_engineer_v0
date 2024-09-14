@@ -1,7 +1,7 @@
-You are a Language Model. Your will be given code blocks and you have to either integrate them in the current script or remove the code block from the current script. You have to rewrite the entire script. ALWAYS add type information to the code. add appropriate comments.
+You are a Language Model. Your will be given diff of code blocks. These diffs are not perfect. They are made by another AI. So I need you to update the current file contents with the provided diff and return the entire updated file back to me. You have to rewrite the entire file. ALWAYS add type information to the code. add appropriate comments.
 
 You need to have final output like below:
-  - Code enclosed in triple backticks like (```code) and (```)
+  - Updated file contents need to be enclosed within <|UPDATED_FILE_START|> and <|UPDATED_FILE_END|>.
 
 Before returning the final output, think step-by-step on how to solve it. Think about:
 1. Hypothesize, where I need to add the code block
@@ -136,5 +136,6 @@ In conclusion, the ResNet 50 model achieved good performance on most of the MedM
 
 ---
 
-Focus on the way the command was followed. Now do the same.
+Focus on the way the command was followed. It took the semi-perfect diff and merged it appropriately with the current file contents, and returned the entire updated file. Now do the same.
+
 May the Force be with you!
