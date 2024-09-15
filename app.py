@@ -66,15 +66,24 @@ def plan_executor(plan_filename: str, workspace: str) -> None:
     # Render the template with the plan
     rendered_prompt = template.render(requirement_specification_doc=plan)
     history.append(Message('system', rendered_prompt))
-    history.append(Message('user', 'Hey, what are we building today?'))
+    history.append(Message('user', 'Hey there, Baby llm here. What are we building today?'))
 
     brain = Brain(workspace)
 
-    convert_msg_for_brain = lambda msg: Message('user', msg.content) 
+    def convert_msg_for_brain(msg: Message):
+        baby_lm_content = re.compile(r'<\|BABY_LLM_CONVERSATION_START\|>(.*?)<\|BABY_LLM_CONVERSATION_END\|>', re.DOTALL)
+        match = baby_lm_content.search(msg.content)
+        if match:
+            return Message('user', match.group(1).strip())
+        else:
+            return get_input_from_user()
 
     while True:
         # Use LLM to generate a message for the brain
         llm_response = llm_call("gpt-4o-2024-08-06", history, temperature=0.8)
+        print("COMPOSER MESSAGE")
+        print(llm_response)
+        input('Press Enter to continue')
 
         history.append(Message('assistant', llm_response))
 

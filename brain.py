@@ -105,9 +105,10 @@ class Brain:
                 if response_match:
                     response = response_match.group(1).strip()
                     self.history.append(Message("assistant", llm_res))
+                    print("\033[92m" + response + "\033[0m")
+                    return response
                     user_turn = True
                     max_retries = self.MAX_RETRIES
-                    print("\033[92m" + response + "\033[0m")
                 else:
                     user_turn = True
                     max_retries -= 1
