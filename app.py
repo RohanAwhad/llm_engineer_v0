@@ -1,17 +1,18 @@
+import jinja2
 from brain import Brain
 from message import Message
 import re
 import argparse
 from llm_engineer import get_input_from_user, llm_call
 
-def save_composer_output(doc: str, filepath: str):
+def save_composer_output(doc: str, filepath: str) -> str:
     """Saves the composer output to a specified file."""
     with open(filepath, 'w') as f:
         f.write(doc)
     print(f"Plan saved at: {filepath}")
     return filepath
 
-def plan_composer():
+def plan_composer(save_path: str) -> None:
     """Handles the process of composing a plan using user input and an LLM."""
     with open('prompts/composer_planner.txt', 'r') as f:
         sys_prompt = f.read()
@@ -45,13 +46,63 @@ def plan_composer():
                 if doc.startswith('```'): doc = ('\n'.join(doc.split('\n')[1:])).strip()
                 if doc.endswith('```'): doc = ('\n'.join(doc.split('\n')[:-1])).strip()
                 # Save the composed plan using default filename
-                save_composer_output(doc, 'composer_plan.txt')
+                save_composer_output(doc, save_path)
         exit(0)
 
-def plan_executor(plan_filename: str, workspace: str):
+def plan_executor(plan_filename: str, workspace: str) -> None:
     """Executes the plan specified in the given filename."""
-    # TODO: (rohan): LLM will talk with brain here to create all the capable functions.
-    pass
+    
+    # Load the system prompt as a Jinja template
+    with open('prompts/composer_executor.txt', 'r') as f:
+        template_content = f.read()
+    template = jinja2.Template(template_content)
+
+    # Initialize history as a list of Message objects
+    history = []
+
+    # Load the plan content
+    with open(plan_filename, 'r') as plan_file:
+        plan = plan_file.read()
+
+    # Render the template with the plan
+    rendered_prompt = template.render(requirement_specification_doc=plan)
+    history.append(Message('system', rendered_prompt))
+    history.append(Message('user', 'Hey, what are we building today?'))
+
+    brain = Brain(workspace)
+
+    convert_msg_for_brain = lambda msg: Message('user', msg.content) 
+
+    while True:
+        # Use LLM to generate a message for the brain
+        llm_response = llm_call("gpt-4o-2024-08-06", history, temperature=0.8)
+        breakpoint()
+
+        history.append(Message('assistant', llm_response))
+
+        # Check and log any log summary
+        log_start_tag = "<|LOG_SUMMARY_START|>"
+        log_end_tag = "<|LOG_SUMMARY_END|>"
+        log_start_idx = llm_response.find(log_start_tag)
+        log_end_idx = llm_response.find(log_end_tag)
+        
+        if log_start_idx != -1 and log_end_idx != -1:
+            log_content = llm_response[log_start_idx + len(log_start_tag):log_end_idx].strip()
+            with open('log.txt', 'a') as log_file:
+                log_file.write(log_content + "\n")
+
+        # Check for the job finish tag
+        if "<|JOB_FINISH|>" in llm_response:
+            break
+
+        # Send the last message to the brain and get the response
+        brain_output = brain.run(convert_msg_for_brain(history[-1]))
+        if not brain_output: brain_output = '<NO MESSAGE FROM USER. INITIATE CONVERSATION>'
+        user_message = Message('user', brain_output)
+        history.append(user_message)
+        input('Press Enter to continue')
+
+    print("Plan execution completed.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Process some arguments.')
@@ -62,14 +113,12 @@ if __name__ == "__main__":
 
     workspace = args.workspace
     if args.plan_composer:
-        plan_composer()
         # Assuming plan_composer function saves the output in 'composer_plan.txt'
         if args.plan_executor:
             save_path = args.plan_executor
         else:
             save_path = 'composer_plan.txt'
-        # Saving plan output to the specified location
-        save_composer_output('composer_plan.txt', save_path)
+        plan_composer(save_path)
 
     if args.plan_executor:
         # Logic to load and execute plan_executor with the file content
