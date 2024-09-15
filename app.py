@@ -40,7 +40,6 @@ def plan_composer(save_path: str) -> None:
             llm_res = history[-1].content
             req_spec_doc_ptrn = re.compile(r'<\|REQ_SPEC_DOC_START\|>(.*?)<\|REQ_SPEC_DOC_END\|>', re.DOTALL)
             match = req_spec_doc_ptrn.search(llm_res)
-            breakpoint()
             if match:
                 doc = match.group(1).strip()
                 if doc.startswith('```'): doc = ('\n'.join(doc.split('\n')[1:])).strip()
@@ -76,7 +75,6 @@ def plan_executor(plan_filename: str, workspace: str) -> None:
     while True:
         # Use LLM to generate a message for the brain
         llm_response = llm_call("gpt-4o-2024-08-06", history, temperature=0.8)
-        breakpoint()
 
         history.append(Message('assistant', llm_response))
 
