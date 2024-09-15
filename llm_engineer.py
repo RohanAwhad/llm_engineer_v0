@@ -2,79 +2,96 @@ import dataclasses
 import openai
 import os
 import re
-import subprocess
 from typing import Optional
+from message import Message
 
-
-@dataclasses.dataclass
-class Message:
-    role: str
-    content: str
-
-    def __str__(self) -> str:
-        return f"[{self.role}]: {self.content}"
-
-    def __repr__(self) -> str:
-        return str(self)
 
 END_OF_INPUT = "<|ROHAN_OUT|>"
+
 
 def llm_call(model: str, messages: list[Message], temperature: float) -> str:
     """
     Calls the OpenAI API to get a response based on the model and messages provided.
-    
+
     :param model: The name of the model to call.
     :param messages: A list of Message objects containing the conversation history.
     :param temperature: The temperature setting for randomness in the response.
     :return: The content of the response from the model.
     """
-    client = openai.OpenAI(api_key=os.environ["OPENAI_API_KEY"])  # Initialize OpenAI client
+    client = openai.OpenAI(
+        api_key=os.environ["OPENAI_API_KEY"]
+    )  # Initialize OpenAI client
     res = client.chat.completions.create(
         model=model,
         messages=[dataclasses.asdict(x) for x in messages],
         temperature=temperature,
-        max_tokens=4096
+        max_tokens=4096,
     )
     return res.choices[0].message.content
 
-def get_input_from_user() -> str:
+
+def get_input_from_user() -> Message:
     """
     Collects input from the user until the END_OF_INPUT marker is encountered.
-    Additionally, it checks for special markers to read content from a specified file.
+    Additionally, it checks for special markers to read content from a specified file and image.
     
-    :return: The complete user input as a string.
+    :return: The complete user input as a Message object with structured content.
     """
     print('User >')
-    messages = []
+    content_list = []
     read_plan_pattern = re.compile(r"<\|READ_PLAN_START\|>(.*?)<\|READ_PLAN_END\|>", re.DOTALL)
+    read_image_pattern = re.compile(r"<\|READ_IMAGE_START\|>(.*?)<\|READ_IMAGE_END\|>", re.DOTALL)
+
     while True:
         user_input = input()
+        
         # Check for <|READ_PLAN_START|> and <|READ_PLAN_END|> keywords
-        match = read_plan_pattern.search(user_input)
-        if match:
-            # Extract the file path
-            file_path = match.group(1).strip()
+        plan_match = read_plan_pattern.search(user_input)
+        if plan_match:
+            # Extract the file path and read the content
+            file_path = plan_match.group(1).strip()
+            plan_content = ""
             if os.path.exists(file_path):
-                # Read file contents
                 with open(file_path, 'r') as f:
-                    file_content = f.read()
-                # Append the file content to the user input
-                user_input += '\n' + file_content
-                print('PLAN:\n', file_content)
+                    plan_content = f.read()
+                print('PLAN:\n', plan_content)
             else:
                 print(f"File at path {file_path} does not exist.")
-            # Remove the filepath and keywords from the content
+            # Append the file content to content list
+            content_list.append({"type": "text", "text": user_input.replace(plan_match.group(0), '').strip()})
+            content_list.append({"type": "text", "text": plan_content})
             user_input = read_plan_pattern.sub('', user_input)
 
-        messages.append(user_input)
+        # Check for <|READ_IMAGE_START|> and <|READ_IMAGE_END|> keywords
+        image_match = read_image_pattern.search(user_input)
+        if image_match:
+            file_path = image_match.group(1).strip()
+            if os.path.exists(file_path):
+                with open(file_path, 'rb') as f:
+                    image_content = f.read()
+                    import base64
+                    base64_image = base64.b64encode(image_content).decode('utf-8')
+                # Updated line to include the image data URL prefix
+                content_list.append({"type": "image_url", "image_url": {'url': f"data:image/png;base64,{base64_image}"}})
+                #print('IMAGE:\n', base64_image)
+            else:
+                print(f"File at path {file_path} does not exist.")
+            user_input = read_image_pattern.sub('', user_input)
+
         if END_OF_INPUT in user_input: 
+            if user_input.strip():
+                content_list.append({"type": "text", "text": user_input.replace(END_OF_INPUT, '').strip()})
             break
-        
-    content = '\n'.join(messages).replace(END_OF_INPUT, '')
-    return content.strip()
+        if user_input.strip():
+            content_list.append({"type": "text", "text": user_input.strip()})
+
+
+    
+    return Message(role="user", content=content_list)
+
 
 def rewrite_file(workspace: str, filename: str, diff: str) -> Optional[str]:
-    '''
+    """
     Its job is to rewrite the file contents based on the cmd.
     The cmd would be either ADD or REMOVE.
       - ADD will be used to integrate the new code block into the current file
@@ -82,130 +99,90 @@ def rewrite_file(workspace: str, filename: str, diff: str) -> Optional[str]:
 
     If the filename does not exist or the file is empty, create a new file and add the contents to it directly.
     If the file has content, then ask the llm to regenerate the whole file with either addition of the code or deletion.
-    '''
-    FILEPATH = f'{workspace}/{filename}'
+    """
+    FILEPATH = f"{workspace}/{filename}"
     if not os.path.exists(FILEPATH):
-        with open(FILEPATH, 'w') as f: pass
+        with open(FILEPATH, "w") as f:
+            pass
 
     # get the contents of the file
-    with open('prompts/file_rewriter.txt', 'r') as f:
+    with open("prompts/file_rewriter.txt", "r") as f:
         sys_prompt = f.read()
-    history = [Message('system', sys_prompt),]
+    history = [
+        Message("system", sys_prompt),
+    ]
 
-    with open(FILEPATH, 'r') as f:
+    with open(FILEPATH, "r") as f:
         file_contents = f.read()
     user_msg = f"CURRENT_FILE_CONTENTS:\n```python\n{file_contents.strip()}\n```\n\n"
     user_msg += f"DIFF:\n```diff\n{diff.strip()}\n```\n\n"
 
-    history.append(Message('user', user_msg))
+    history.append(Message("user", user_msg))
     print("\033[92m" + str(history[-1]) + "\033[0m")
 
-    code_ptrn = re.compile(r"<\|UPDATED_FILE_START\|>(.*?)<\|UPDATED_FILE_END\|>", re.DOTALL)
+    code_ptrn = re.compile(
+        r"<\|UPDATED_FILE_START\|>(.*?)<\|UPDATED_FILE_END\|>", re.DOTALL
+    )
     max_retries = 3
     while max_retries > 0:
         max_retries -= 1
         llm_res = llm_call("gpt-4o-mini", history, temperature=0.8)
-        print('\033[94m' + f'Assistant:{llm_res}'+'\033[0m') 
+        print("\033[94m" + f"Assistant:{llm_res}" + "\033[0m")
 
         # check if python code exists
         match = re.search(code_ptrn, llm_res)
         if match:
             new_code = match.group(1).strip()
-            with open(FILEPATH, 'w') as f: 
+            with open(FILEPATH, "w") as f:
                 f.write(new_code)
             return None
 
     return "Error: was unable to modify the contents"
 
-def brain(workspace: str) -> None:
-    with open('prompts/brain.txt', 'r') as f: 
-        sys_prompt = f.read()
+def plan_composer():
+    with open('prompts/composer_planner.txt', 'r') as f: sys_prompt = f.read()
     history = [Message('system', sys_prompt), ]
+
     user_turn = True
-
-    tool_name_ptrn = re.compile(r'TOOL_NAME: ([\d\w]+)', re.DOTALL)
-    diff_ptrn = re.compile(r"```diff(.*?)```", re.DOTALL)
-    response_ptrn = re.compile(r"```response(.*?)```", re.DOTALL)
-    filename_ptrn = re.compile(r"```filename(.*?)```", re.DOTALL)
-
-    MAX_RETRIES = 3
-    max_retries = MAX_RETRIES
-    while True:
-        if user_turn:
-            user_msg = get_input_from_user()
-            if user_msg.strip():
-                history.append(Message('user', user_msg.strip()))
-            else:
-                print('No Input provided. Quitting ...')
-                exit(0)
-
-        print(f"\033[93m{history[-1]}\033[0m")
-        llm_res = llm_call("gpt-4o-2024-08-06", history, temperature=0.8)
-        print("\033[95m" + str(llm_res) + "\033[0m")
-
-        # check if tool is called?
-        match = re.search(tool_name_ptrn, llm_res)
-        if match:
-            tool_name = match.group(1)
-
-            if tool_name == 'file_reader':
-                filename_match = re.search(filename_ptrn, llm_res)
-                if filename_match:
-                    filename = filename_match.group(1).strip()
-                    absolute_fp = f'{workspace}/{filename}'
-                    if os.path.exists(absolute_fp):
-                        with open(absolute_fp, 'r') as f: 
-                            file_contents = f.read()
-                        history.extend([Message('assistant', llm_res), Message('user', f'File Contents:\n\n```\n{file_contents}\n```'), ])
-                    else:
-                        history.extend([Message('assistant', llm_res), Message('user', f'File does not exist. If you want to add content just call file writer. It will handle creation'), ])
-
-                    user_turn = False
-                    max_retries = MAX_RETRIES
+    try:
+        while True:
+            if user_turn:
+                user_msg = get_input_from_user()  
+                if user_msg.content:  
+                    history.append(user_msg)  
                 else:
-                    user_turn = False
-                    max_retries -= 1
-                    continue
+                    print('No Input provided. Quitting ...')
+                    raise KeyboardInterrupt
 
-            elif tool_name == 'file_writer':
-                filename_match = re.search(filename_ptrn, llm_res)
-                diff_match = re.search(diff_ptrn, llm_res)
-                if filename_match and diff_match:
-                    filename = filename_match.group(1).strip()
-                    diff = diff_match.group(1).strip()
-                    out = rewrite_file(workspace, filename, diff)
-                    history.extend([Message('assistant', llm_res), Message('user', f'TOOL_OUTPUT:\n\n{out}') ])
-                    user_turn = False
-                    max_retries = MAX_RETRIES
-                else:
-                    user_turn = False
-                    max_retries -= 1
-                    continue
+            print(f"\033[93m{history[-1]}\033[0m")
+            llm_res = llm_call("gpt-4o-2024-08-06", history, temperature=0.8)
+            print("\033[95m" + str(llm_res) + "\033[0m")
 
-            else:
-                user_turn = False
-                max_retries -= 1
-                continue
-
-        # check if responding to user
-        else:
-            match = re.search(response_ptrn, llm_res)
+            history.append(Message('assistant', llm_res))
+            user_turn = True
+    except KeyboardInterrupt:
+        if history[-1].role == 'assistant':
+            llm_res = history[-1].content
+            req_spec_doc_ptrn = re.compile(r'<\|REQ_SPEC_DOC_START\|>(.*?)<\|REQ_SPEC_DOC_END\|>', re.DOTALL)
+            match = req_spec_doc_ptrn.search(llm_res)
+            breakpoint()
             if match:
-                # responding back to user
-                response = match.group(1).strip()
-                history.append(Message('assistant', llm_res))
-                user_turn = True
-                max_retries = MAX_RETRIES
-                print("\033[92m" + response + "\033[0m")
-                continue
+                doc = match.group(1).strip()
+                if doc.startswith('```'): doc = ('\n'.join(doc.split('\n')[1:])).strip()
+                if doc.endswith('```'): doc = ('\n'.join(doc.split('\n')[:-1])).strip()
+                with open('composer_plan.txt', 'w') as f:
+                    f.write(doc)
+        exit(0)
 
-            else:
-                user_turn = False
-                max_retries -= 1
-                continue
 
+def plan_executor(plan_filename: str, workspace: str):
+    # TODO: (rohan): LLM will talk with brain here to create all the capable functions.:w
+    pass
 
 if __name__ == '__main__':
+    plan_composer()
+    exit(0)
+    
     import sys
     workspace = sys.argv[1]
     brain(workspace)
