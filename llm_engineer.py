@@ -30,43 +30,64 @@ def llm_call(model: str, messages: list[Message], temperature: float) -> str:
     return res.choices[0].message.content
 
 
-def get_input_from_user() -> str:
+def get_input_from_user() -> Message:
     """
     Collects input from the user until the END_OF_INPUT marker is encountered.
-    Additionally, it checks for special markers to read content from a specified file.
-
-    :return: The complete user input as a string.
+    Additionally, it checks for special markers to read content from a specified file and image.
+    
+    :return: The complete user input as a Message object with structured content.
     """
-    print("User >")
-    messages = []
-    read_plan_pattern = re.compile(
-        r"<\|READ_PLAN_START\|>(.*?)<\|READ_PLAN_END\|>", re.DOTALL
-    )
+    print('User >')
+    content_list = []
+    read_plan_pattern = re.compile(r"<\|READ_PLAN_START\|>(.*?)<\|READ_PLAN_END\|>", re.DOTALL)
+    read_image_pattern = re.compile(r"<\|READ_IMAGE_START\|>(.*?)<\|READ_IMAGE_END\|>", re.DOTALL)
+
     while True:
         user_input = input()
+        
         # Check for <|READ_PLAN_START|> and <|READ_PLAN_END|> keywords
-        match = read_plan_pattern.search(user_input)
-        if match:
-            # Extract the file path
-            file_path = match.group(1).strip()
+        plan_match = read_plan_pattern.search(user_input)
+        if plan_match:
+            # Extract the file path and read the content
+            file_path = plan_match.group(1).strip()
+            plan_content = ""
             if os.path.exists(file_path):
-                # Read file contents
-                with open(file_path, "r") as f:
-                    file_content = f.read()
-                # Append the file content to the user input
-                user_input += "\n" + file_content
-                print("PLAN:\n", file_content)
+                with open(file_path, 'r') as f:
+                    plan_content = f.read()
+                print('PLAN:\n', plan_content)
             else:
                 print(f"File at path {file_path} does not exist.")
-            # Remove the filepath and keywords from the content
-            user_input = read_plan_pattern.sub("", user_input)
+            # Append the file content to content list
+            content_list.append({"type": "text", "text": user_input.replace(plan_match.group(0), '').strip()})
+            content_list.append({"type": "text", "text": plan_content})
+            user_input = read_plan_pattern.sub('', user_input)
 
-        messages.append(user_input)
-        if END_OF_INPUT in user_input:
+        # Check for <|READ_IMAGE_START|> and <|READ_IMAGE_END|> keywords
+        image_match = read_image_pattern.search(user_input)
+        if image_match:
+            file_path = image_match.group(1).strip()
+            if os.path.exists(file_path):
+                with open(file_path, 'rb') as f:
+                    image_content = f.read()
+                    import base64
+                    base64_image = base64.b64encode(image_content).decode('utf-8')
+                # Updated line to include the image data URL prefix
+                content_list.append({"type": "image_url", "image_url": {'url': f"data:image/png;base64,{base64_image}"}})
+                #print('IMAGE:\n', base64_image)
+            else:
+                print(f"File at path {file_path} does not exist.")
+            user_input = read_image_pattern.sub('', user_input)
+
+        if END_OF_INPUT in user_input: 
+            if user_input.strip():
+                content_list.append({"type": "text", "text": user_input.replace(END_OF_INPUT, '').strip()})
             break
+        if user_input.strip():
+            content_list.append({"type": "text", "text": user_input.strip()})
 
-    content = "\n".join(messages).replace(END_OF_INPUT, "")
-    return content.strip()
+
+    
+    return Message(role="user", content=content_list)
 
 
 def rewrite_file(workspace: str, filename: str, diff: str) -> Optional[str]:
