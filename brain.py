@@ -56,16 +56,12 @@ class Brain:
             ]
         )
 
-    def run(self):
-        while True:
-            if self.user_turn:
-                user_msg = get_input_from_user()
-                if user_msg.strip():
-                    self.history.append(Message("user", user_msg.strip()))
-                else:
-                    print("No Input provided. Quitting ...")
-                    exit(0)
+    def run(self, user_msg: Message):
 
+        self.history.append(user_msg)
+        user_turn = False
+        max_retries = self.MAX_RETRIES
+        while not user_turn:
             print(f"\033[93m{self.history[-1]}\033[0m")
             self.llm_res = llm_call("gpt-4o-2024-08-06", self.history, temperature=0.8)
             print("\033[95m" + str(self.llm_res) + "\033[0m")
@@ -80,11 +76,11 @@ class Brain:
                     if filename_match:
                         filename = filename_match.group(1).strip()
                         self.process_file_reader(filename)
-                        self.user_turn = False
-                        self.max_retries = self.MAX_RETRIES
+                        user_turn = False
+                        max_retries = self.MAX_RETRIES
                     else:
-                        self.user_turn = False
-                        self.max_retries -= 1
+                        user_turn = False
+                        max_retries -= 1
 
                 elif tool_name == "file_writer":
                     filename_match = re.search(self.filename_ptrn, self.llm_res)
@@ -93,15 +89,15 @@ class Brain:
                         filename = filename_match.group(1).strip()
                         diff = diff_match.group(1).strip()
                         self.process_file_writer(filename, diff)
-                        self.user_turn = False
-                        self.max_retries = self.MAX_RETRIES
+                        user_turn = False
+                        max_retries = self.MAX_RETRIES
                     else:
-                        self.user_turn = False
-                        self.max_retries -= 1
+                        user_turn = False
+                        max_retries -= 1
 
                 else:
-                    self.user_turn = False
-                    self.max_retries -= 1
+                    user_turn = False
+                    max_retries -= 1
 
             # Check if responding to user
             else:
@@ -109,14 +105,16 @@ class Brain:
                 if response_match:
                     response = response_match.group(1).strip()
                     self.history.append(Message("assistant", self.llm_res))
-                    self.user_turn = True
-                    self.max_retries = self.MAX_RETRIES
+                    user_turn = True
+                    max_retries = self.MAX_RETRIES
                     print("\033[92m" + response + "\033[0m")
                 else:
-                    self.user_turn = False
-                    self.max_retries -= 1
+                    user_turn = True
+                    max_retries -= 1
 
 
-# Example usage:
-brain_instance = Brain(workspace="/path/to/workspace")
-brain_instance.run()
+if __name__ == '__main__':
+    brain = Brain('../hello_world')
+    while True:
+        user_msg = get_input_from_user()
+        brain.run(user_msg)
