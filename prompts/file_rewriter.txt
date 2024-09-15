@@ -77,6 +77,7 @@ DIFF:
 
 **Output**:
 
+```
 <|UPDATED_FILE_START|>
  Introduction:
 The objective of this assignment was to train a ResNet 50 model for the MedMNIST 2D and 3D datasets and evaluate its performance. The MedMNIST dataset is a large-scale collection of medical image datasets, and the ResNet 50 model is a popular deep learning architecture used for image classification tasks.
@@ -133,6 +134,7 @@ However, the model did not perform as well on the retinamnist and fracturemnist3
 Conclusion:
 In conclusion, the ResNet 50 model achieved good performance on most of the MedMNIST datasets, with an average AUC of 0.88 and an average ACC of 0.81. The model performed particularly well on the chestmnist, pathmnist, and bloodmnist datasets, but did not perform as well on the retinamnist and fracturemnist3d datasets. Overall, the results demonstrate the effectiveness of the ResNet 50 model for medical image classification tasks.
 <|UPDATED_FILE_END|>
+```
 
 ---
 
