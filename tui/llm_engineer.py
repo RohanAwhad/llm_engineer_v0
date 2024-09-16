@@ -62,8 +62,6 @@ class LLMEngineer(App):
         if os.path.exists(self.history_file):
             with open(self.history_file, 'rb') as f:
                 self.brain.history = pickle.load(f)
-        else:
-            self.brain.history = []  # Initialize with an empty list if no file exists
 
     def load_message_list(self):
         """Load message list from a file if it exists."""
