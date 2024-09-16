@@ -3,7 +3,7 @@ from brain import Brain
 from message import Message
 import re
 import argparse
-from llm_engineer import get_input_from_user, llm_call
+from llm_functions import get_input_from_user, llm_call
 
 def save_composer_output(doc: str, filepath: str) -> str:
     """Saves the composer output to a specified file."""
