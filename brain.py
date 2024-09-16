@@ -1,7 +1,8 @@
 import os
 import re
-from message import Message
-from llm_engineer import get_input_from_user, llm_call, rewrite_file
+from typing import Callable
+from message import Message, MessageToPrint
+from llm_functions import get_input_from_user, llm_call, rewrite_file
 
 
 class Brain:
@@ -47,8 +48,8 @@ class Brain:
                 ]
             )
 
-    def process_file_writer(self, filename, diff, llm_res):
-        out = rewrite_file(self.workspace, filename, diff)
+    def process_file_writer(self, filename, diff, llm_res, update_logs: Callable | None = None):
+        out = rewrite_file(self.workspace, filename, diff, update_logs)
         self.history.extend(
             [
                 Message("assistant", llm_res),
@@ -56,7 +57,7 @@ class Brain:
             ]
         )
 
-    def run(self, user_msg: Message) -> str | None:
+    def run(self, user_msg: Message, update_logs: Callable | None = None) -> str | None:
         self.history.append(user_msg)
         user_turn = False
         max_retries = self.MAX_RETRIES
@@ -65,6 +66,7 @@ class Brain:
             print(f"\033[93m{self.history[-1]}\033[0m")
             llm_res = llm_call("gpt-4o-2024-08-06", self.history, temperature=0.8)
             print("\033[95m" + str(llm_res) + "\033[0m")
+            if update_logs: update_logs(MessageToPrint('Brain Raw Response', llm_res, "light_yellow3"))
 
             # Check if tool is called
             tool_name_match = re.search(self.tool_name_ptrn, llm_res)
@@ -76,6 +78,7 @@ class Brain:
                     if filename_match:
                         filename = filename_match.group(1).strip()
                         self.process_file_reader(filename, llm_res)
+                        if update_logs: update_logs(MessageToPrint(f'Contents of: "{filename}"', self.history[-1].content, "grey85"))
                         user_turn = False
                         max_retries = self.MAX_RETRIES
                     else:
@@ -88,7 +91,7 @@ class Brain:
                     if filename_match and diff_match:
                         filename = filename_match.group(1).strip()
                         diff = diff_match.group(1).strip()
-                        self.process_file_writer(filename, diff, llm_res)
+                        self.process_file_writer(filename, diff, llm_res, update_logs)
                         user_turn = False
                         max_retries = self.MAX_RETRIES
                     else:
@@ -114,7 +117,6 @@ class Brain:
                     max_retries -= 1
 
         return llm_res
-
 
 if __name__ == '__main__':
     brain = Brain('../hello_world')

@@ -2,4 +2,4 @@
 *.swp
 workspaces
 play
-
+__pycache__

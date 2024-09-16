@@ -11,3 +11,10 @@ class Message:
 
     def __repr__(self) -> str:
         return str(self)
+
+@dataclasses.dataclass
+class MessageToPrint:
+    title: str
+    content: str
+    color: str
+

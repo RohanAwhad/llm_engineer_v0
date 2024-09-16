@@ -1,0 +1,18 @@
+#content {
+  }
+
+#messages {
+  height: 80vh
+}
+
+#chatbar {
+    height: 20vh;
+}
+
+#input {
+}
+
+#submit_button {
+  width: 5%;
+  margin-left: 10;
+}
