@@ -2,8 +2,8 @@ import dataclasses
 import openai
 import os
 import re
-from typing import Optional
-from message import Message
+from typing import Optional, Callable
+from message import Message, MessageToPrint
 
 
 END_OF_INPUT = "<|ROHAN_OUT|>"
@@ -90,7 +90,7 @@ def get_input_from_user() -> Message:
     return Message(role="user", content=content_list)
 
 
-def rewrite_file(workspace: str, filename: str, diff: str) -> Optional[str]:
+def rewrite_file(workspace: str, filename: str, diff: str, update_logs: Callable | None = None) -> Optional[str]:
     """
     Its job is to rewrite the file contents based on the cmd.
     The cmd would be either ADD or REMOVE.
@@ -119,6 +119,7 @@ def rewrite_file(workspace: str, filename: str, diff: str) -> Optional[str]:
 
     history.append(Message("user", user_msg))
     print("\033[92m" + str(history[-1]) + "\033[0m")
+    if update_logs: update_logs(MessageToPrint('File Rewriter Input', str(history[-1]), "light_salmon3"))
 
     code_ptrn = re.compile(
         r"<\|UPDATED_FILE_START\|>(.*?)<\|UPDATED_FILE_END\|>", re.DOTALL
@@ -128,6 +129,7 @@ def rewrite_file(workspace: str, filename: str, diff: str) -> Optional[str]:
         max_retries -= 1
         llm_res = llm_call("gpt-4o-mini", history, temperature=0.8)
         print("\033[94m" + f"Assistant:{llm_res}" + "\033[0m")
+        if update_logs: update_logs(MessageToPrint('File Rewriter Output', llm_res, "light_sky_blue3"))
 
         # check if python code exists
         matches = list(re.finditer(code_ptrn, llm_res))
