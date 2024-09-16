@@ -56,8 +56,6 @@ class LLMEngineer(App):
         self.brain = Brain(workspace)
         self.history_file = os.path.join(workspace, '.brain_history')  # Path to store brain history
         self.message_list_file = os.path.join(workspace, '.brain_message_list')  # Path to store message list
-        self.load_brain_history()  # Load historical data on initialization
-        self.load_message_list()  # Load previous messages on initialization
 
     def load_brain_history(self):
         """Load brain history from a file if it exists."""
@@ -85,6 +83,8 @@ class LLMEngineer(App):
             yield Button("Submit", id="submit_button")
 
     def on_mount(self):
+        self.load_brain_history()  # Load historical data on initialization
+        self.load_message_list()  # Load previous messages on initialization
         self.log_container = self.query_one(BrainWidget).message_list
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
