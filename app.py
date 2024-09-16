@@ -4,6 +4,8 @@ from message import Message
 import re
 import argparse
 from llm_functions import get_input_from_user, llm_call
+from tui.llm_engineer import LLMEngineer
+
 
 def save_composer_output(doc: str, filepath: str) -> str:
     """Saves the composer output to a specified file."""
@@ -114,12 +116,15 @@ def plan_executor(plan_filename: str, workspace: str) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Process some arguments.')
     parser.add_argument('workspace', type=str, help='Workspace directory.')
+    parser.add_argument('--tui', action='store_true', help='Chat with brain in TUI mode.')
     parser.add_argument('--plan_composer', action='store_true', help='Run the plan composer.')
     parser.add_argument('--plan_executor', type=str, default=None, help='Filepath for the plan executor.')
     args = parser.parse_args()
-
     workspace = args.workspace
-    if args.plan_composer:
+
+    if args.tui:
+        LLMEngineer(workspace).run()
+    elif args.plan_composer:
         # Assuming plan_composer function saves the output in 'composer_plan.txt'
         if args.plan_executor:
             save_path = args.plan_executor
@@ -127,13 +132,13 @@ if __name__ == "__main__":
             save_path = 'composer_plan.txt'
         plan_composer(save_path)
 
-    if args.plan_executor:
+    elif args.plan_executor:
         # Logic to load and execute plan_executor with the file content
         with open(args.plan_executor, 'r') as f:
             plan_content = f.read()
         plan_executor(args.plan_executor, workspace)
 
-    if not args.plan_composer and not args.plan_executor:
+    else:
         brain = Brain(workspace)
         while True:
             user_msg = get_input_from_user()
