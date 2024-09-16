@@ -2,11 +2,40 @@ import dataclasses
 import openai
 import os
 import re
-from typing import Optional, Callable
+import requests  # Importing requests library for making HTTP requests
+from typing import Optional, Callable, List
 from message import Message, MessageToPrint
 
 
 END_OF_INPUT = "<|ROHAN_OUT|>"
+
+@dataclasses.dataclass
+class SearchResult:
+    """
+    Dataclass to represent the search results from Brave Search API.
+    
+    :param title: The title of the search result.
+    :param url: The URL of the search result.
+    :param description: A brief description of the search result.
+    :param extra_snippets: Additional snippets related to the search result.
+    """
+    title: str
+    url: str
+    description: str
+    extra_snippets: list
+
+    def __str__(self) -> str:
+        """
+        Returns a string representation of the search result.
+
+        :return: A string representation of the search result.
+        """
+        return (
+            f"Title: {self.title}\n"
+            f"URL: {self.url}\n"
+            f"Description: {self.description}\n"
+            f"Extra Snippets: {', '.join(self.extra_snippets)}"
+        )
 
 
 def llm_call(model: str, messages: list[Message], temperature: float) -> str:
@@ -28,6 +57,44 @@ def llm_call(model: str, messages: list[Message], temperature: float) -> str:
         max_tokens=4096,
     )
     return res.choices[0].message.content
+
+
+def search_brave(query: str, api_key: str, count: int = 10) -> List[SearchResult]:
+    """
+    Searches the web using Brave Search API and returns structured search results.
+
+    :param query: The search query string.
+    :param api_key: The API key for authentication with the Brave Search service.
+    :param count: The number of search results to return.
+    :return: A list of SearchResult objects containing the search results.
+    """
+    url = "https://api.search.brave.com/res/v1/web/search"
+    headers = {
+        "Accept": "application/json",
+        "X-Subscription-Token": api_key
+    }
+    params = {
+        "q": query,
+        "count": count
+    }
+
+    response = requests.get(url, headers=headers, params=params)
+    response.raise_for_status()  # Raises an exception for HTTP errors
+    results_json = response.json()
+    
+    results = []
+    for item in results_json.get('web', {}).get('results', []):
+        result = SearchResult(
+            title=item.get('title', ''),
+            url=item.get('url', ''),
+            description=item.get('description', ''),
+            extra_snippets=item.get('extra_snippets', [])
+        )
+        results.append(result)
+
+    return results
+
+
 
 
 def get_input_from_user() -> Message:
@@ -146,4 +213,19 @@ def rewrite_file(workspace: str, filename: str, diff: str, update_logs: Callable
 
     return "Error: was unable to modify the contents"
 
+
+if __name__ == '__main__':
+    # Example usage:
+    import os
+    api_key = os.environ['BRAVE_SEARCH_AI_API_KEY']
+    results = search_brave("What is the fastest way to sort a large dataset in Python?", api_key)
+    for result in results:
+        print(f"Title: {result.title}")
+        print(f"URL: {result.url}")
+        print(f"Description: {result.description}")
+        if result.extra_snippets:
+            print("Extra Snippets:")
+            for snippet in result.extra_snippets:
+                print(snippet)
+        print("\n")
 
