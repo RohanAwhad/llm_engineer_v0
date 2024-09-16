@@ -1,3 +1,6 @@
+import pickle  # Importing pickle to handle serialization
+import os  # Importing os for file path operations
+
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, ScrollableContainer
 from textual.geometry import Size
@@ -15,12 +18,6 @@ class MessageLabel(Static):
     def __init__(self, message: MessageToPrint):
         super().__init__()
         self.msg = message
-        '''
-        self.styles.width = "100%"
-        self.styles.padding = (1, 2)
-        self.styles.border = ("heavy", "white")
-        self.styles.margin = (0, 0, 1, 0)
-        '''
 
     def render(self):
         return panel.Panel(
@@ -32,29 +29,23 @@ class MessageLabel(Static):
 
 class BrainWidget(Widget):
     message_list = reactive([])
+
     def __init__(self):
         super().__init__()
         self.styles.height = "1fr"
         self.styles.width = "100%"
         self.virtual_size = Size(0, 8)
 
-    '''
-    def render(self):
-        if self.message_list:
-            return ScrollableContainer(*[MessageLabel(x) for x in self.message_list])
-        return ''# MessageLabel(MessageToPrint('System', 'Please enter a prompt to continue', 'blue'))
-    '''
-
     def compose(self):
         with ScrollableContainer():
             yield ListView()
-            
+
     def watch_message_list(self, new_msgs):
         list_view = self.query_one(ListView)
         list_view.clear()
         for msg in new_msgs:
             list_view.append(ListItem(MessageLabel(msg)))
-        
+
 
 class LLMEngineer(App):
     CSS_PATH = "./styles.tcss"
@@ -63,6 +54,22 @@ class LLMEngineer(App):
         super().__init__()
         self.workspace = workspace
         self.brain = Brain(workspace)
+        self.history_file = os.path.join(workspace, '.brain_history')  # Path to store brain history
+        self.message_list_file = os.path.join(workspace, '.brain_message_list')  # Path to store message list
+
+    def load_brain_history(self):
+        """Load brain history from a file if it exists."""
+        if os.path.exists(self.history_file):
+            with open(self.history_file, 'rb') as f:
+                self.brain.history = pickle.load(f)
+
+    def load_message_list(self):
+        """Load message list from a file if it exists."""
+        if os.path.exists(self.message_list_file):
+            with open(self.message_list_file, 'rb') as f:
+                self.brain_widget.message_list = pickle.load(f)
+        else:
+            self.brain_widget.message_list = []  # Initialize with an empty list if no file exists
 
     def compose(self) -> ComposeResult:
         self.brain_widget = BrainWidget()
@@ -74,8 +81,9 @@ class LLMEngineer(App):
             yield Button("Submit", id="submit_button")
 
     def on_mount(self):
+        self.load_brain_history()  # Load historical data on initialization
+        self.load_message_list()  # Load previous messages on initialization
         self.log_container = self.query_one(BrainWidget).message_list
-
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "submit_button":
@@ -92,3 +100,15 @@ class LLMEngineer(App):
             res = self.brain.run(msg, update_logs=self.update_message_list)
             self.update_message_list(MessageToPrint('Brain', res, 'bright_green'))
             self.query_one("#input", TextArea).clear()
+            self.save_brain_history()  # Save the brain history after processing input
+            self.save_message_list()  # Save the message list after processing input
+
+    def save_brain_history(self):
+        """Save brain history to a file."""
+        with open(self.history_file, 'wb') as f:
+            pickle.dump(self.brain.history, f)
+
+    def save_message_list(self):
+        """Save message list to a file."""
+        with open(self.message_list_file, 'wb') as f:
+            pickle.dump(self.brain_widget.message_list, f)

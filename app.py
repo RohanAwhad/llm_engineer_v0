@@ -5,7 +5,7 @@ import re
 import argparse
 from llm_functions import get_input_from_user, llm_call
 from tui.llm_engineer import LLMEngineer
-
+import os  # Importing os for file operations
 
 def save_composer_output(doc: str, filepath: str) -> str:
     """Saves the composer output to a specified file."""
@@ -72,7 +72,8 @@ def plan_executor(plan_filename: str, workspace: str) -> None:
 
     brain = Brain(workspace)
 
-    def convert_msg_for_brain(msg: Message):
+    def convert_msg_for_brain(msg: Message) -> Message:
+        """Converts a Message into a format suitable for the Brain."""
         baby_lm_content = re.compile(r'<\|BABY_LLM_CONVERSATION_START\|>(.*?)<\|BABY_LLM_CONVERSATION_END\|>', re.DOTALL)
         match = baby_lm_content.search(msg.content)
         if match:
@@ -119,8 +120,19 @@ if __name__ == "__main__":
     parser.add_argument('--tui', action='store_true', help='Chat with brain in TUI mode.')
     parser.add_argument('--plan_composer', action='store_true', help='Run the plan composer.')
     parser.add_argument('--plan_executor', type=str, default=None, help='Filepath for the plan executor.')
+    parser.add_argument('--use_previous_context', action='store_true', help='Use previous context or start fresh.')
+
     args = parser.parse_args()
     workspace = args.workspace
+
+    # Remove previous context files if not using previous context
+    if not args.use_previous_context:
+        history_file = os.path.join(workspace, '.brain_history')
+        message_list_file = os.path.join(workspace, '.brain_message_list')
+        if os.path.exists(history_file):
+            os.remove(history_file)
+        if os.path.exists(message_list_file):
+            os.remove(message_list_file)
 
     if args.tui:
         LLMEngineer(workspace).run()
