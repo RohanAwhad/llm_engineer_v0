@@ -130,11 +130,16 @@ def rewrite_file(workspace: str, filename: str, diff: str) -> Optional[str]:
         print("\033[94m" + f"Assistant:{llm_res}" + "\033[0m")
 
         # check if python code exists
-        match = re.search(code_ptrn, llm_res)
-        if match:
-            new_code = match.group(1).strip()
+        matches = list(re.finditer(code_ptrn, llm_res))
+
+        if matches:
+            # Get the last match
+            last_match = matches[-1]
+            new_code = last_match.group(1).strip()
+            
             with open(FILEPATH, "w") as f:
                 f.write(new_code)
+            
             return None
 
     return "Error: was unable to modify the contents"
