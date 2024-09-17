@@ -1,4 +1,4 @@
-# Project Title
+# llm_engineer
 
 This project is an interactive, command-line tool leveraging advanced language models to dynamically compose and execute plans or scripts. It facilitates automation and development tasks by integrating LLM capabilities and web search functionalities.
 
