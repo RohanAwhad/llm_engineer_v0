@@ -181,7 +181,7 @@ def rewrite_file(workspace: str, filename: str, diff: str, update_logs: Callable
 
     with open(FILEPATH, "r") as f:
         file_contents = f.read()
-    user_msg = f"CURRENT_FILE_CONTENTS:\n```python\n{file_contents.strip()}\n```\n\n"
+    user_msg = f"CURRENT_FILE_CONTENTS:\n```\n{file_contents.strip()}\n```\n\n"
     user_msg += f"DIFF:\n```diff\n{diff.strip()}\n```\n\n"
 
     history.append(Message("user", user_msg))
