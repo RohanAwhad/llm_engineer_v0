@@ -1,5 +1,7 @@
 import pickle  # Importing pickle to handle serialization
 import os  # Importing os for file path operations
+import re
+import base64
 
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, ScrollableContainer
@@ -20,8 +22,16 @@ class MessageLabel(Static):
         self.msg = message
 
     def render(self):
+        if isinstance(self.msg.content, list):
+            content = []
+            for item in self.msg.content:
+                if item['type'] == 'text': content.append(item['text'])
+                elif item['type'] == 'image_url': content.append('Image: ' + item['image_url']['url'][:50] + ' ...')
+            content = '\n'.join(content)
+        else:
+            content = str(self.msg.content)
         return panel.Panel(
-            f'[{self.msg.color}]{str(self.msg.content)}[/{self.msg.color}]',
+            f'[{self.msg.color}]{content}[/{self.msg.color}]',
             border_style=f"bold {self.msg.color}",
             title=self.msg.title,
         )
@@ -95,7 +105,7 @@ class LLMEngineer(App):
     def process_input(self) -> None:
         user_input = self.query_one("#input", TextArea).text.strip()
         if user_input:
-            msg = Message('user', user_input)
+            msg = Message('user', preprocess_user_input(user_input))
             self.update_message_list(MessageToPrint('User', msg.content, 'cyan'))
             res = self.brain.run(msg, update_logs=self.update_message_list)
             self.update_message_list(MessageToPrint('Brain', res, 'bright_green'))
@@ -112,3 +122,60 @@ class LLMEngineer(App):
         """Save message list to a file."""
         with open(self.message_list_file, 'wb') as f:
             pickle.dump(self.brain_widget.message_list, f)
+
+
+def preprocess_user_input(user_input):
+    # Post-processing step to handle READ_PLAN and READ_IMAGE tokens
+    content_list = []
+    read_plan_pattern = re.compile(r"<\|READ_PLAN_START\|>(.*?)<\|READ_PLAN_END\|>", re.DOTALL)
+    read_image_pattern = re.compile(r"<\|READ_IMAGE_START\|>(.*?)<\|READ_IMAGE_END\|>", re.DOTALL)
+
+    # Combine both patterns to match READ_PLAN and READ_IMAGE in order of appearance
+    combined_pattern = re.compile(r"(<\|READ_PLAN_START\|>.*?<\|READ_PLAN_END\|>|<\|READ_IMAGE_START\|>.*?<\|READ_IMAGE_END\|>)", re.DOTALL)
+    matches = combined_pattern.finditer(user_input)
+    
+    last_index = 0
+
+    # Process matches sequentially as they appear in the text
+    for match in matches:
+        # Get the text before the current match
+        before_match = user_input[last_index:match.start()].strip()
+        if before_match:
+            # Add any plain text before the matched tag
+            content_list.append({"type": "text", "text": before_match})
+
+        tag_content = match.group(1).strip()
+
+        # Process READ_PLAN tag
+        if tag_content.startswith("<|READ_PLAN_START|>"):
+            plan_match = read_plan_pattern.search(tag_content)
+            if plan_match:
+                file_path = plan_match.group(1).strip()
+                plan_content = ""
+                if os.path.exists(file_path):
+                    with open(file_path, 'r') as f:
+                        plan_content = f.read()
+                # Add the plan content as a separate item
+                content_list.append({"type": "text", "text": plan_content})
+        
+        # Process READ_IMAGE tag
+        elif tag_content.startswith("<|READ_IMAGE_START|>"):
+            image_match = read_image_pattern.search(tag_content)
+            if image_match:
+                file_path = image_match.group(1).strip()
+                if os.path.exists(file_path):
+                    with open(file_path, 'rb') as f:
+                        image_content = f.read()
+                        base64_image = base64.b64encode(image_content).decode('utf-8')
+                    # Add the image content as a separate item
+                    content_list.append({"type": "image_url", "image_url": {'url': f"data:image/png;base64,{base64_image}"}})
+
+        # Update the last index to the end of the current match
+        last_index = match.end()
+
+    # Add any remaining text after the last tag
+    after_last_match = user_input[last_index:].strip()
+    if after_last_match:
+        content_list.append({"type": "text", "text": after_last_match})
+
+    return content_list
