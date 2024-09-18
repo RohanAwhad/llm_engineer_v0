@@ -14,10 +14,10 @@ class Brain:
         self.user_turn = True
 
         self.tool_name_ptrn = re.compile(r"TOOL_NAME: ([\d\w]+)", re.DOTALL)
-        self.diff_ptrn = re.compile(r"```diff(.*?)```", re.DOTALL)
-        self.response_ptrn = re.compile(r"```response(.*?)```", re.DOTALL)
-        self.filename_ptrn = re.compile(r"```filename(.*?)```", re.DOTALL)
-        self.query_ptrn = re.compile(r"```query(.*?)```", re.DOTALL)
+        self.diff_ptrn = re.compile(r"<\|DIFF_START\|>(.*?)<\|DIFF_END\|>", re.DOTALL)
+        self.response_ptrn = re.compile(r"<\|RESPONSE_START\|>(.*?)<\|RESPONSE_END\|>", re.DOTALL)
+        self.filename_ptrn = re.compile(r"<\|FILENAME_START\|>(.*?)<\|FILENAME_END\|>", re.DOTALL)
+        self.query_ptrn = re.compile(r"<\|QUERY_START\|>(.*?)<\|QUERY_END\|>", re.DOTALL)
 
         # Initialize system prompt
         self.load_system_prompt()

@@ -197,14 +197,14 @@ def rewrite_file(workspace: str, filename: str, diff: str, update_logs: Callable
         llm_res = llm_call("gpt-4o-mini", history, temperature=0.8)
         print("\033[94m" + f"Assistant:{llm_res}" + "\033[0m")
         if update_logs: update_logs(MessageToPrint('File Rewriter Output', llm_res, "light_sky_blue3"))
-
-        # check if python code exists
         matches = list(re.finditer(code_ptrn, llm_res))
 
         if matches:
-            # Get the last match
-            last_match = matches[-1]
-            new_code = last_match.group(1).strip()
+            # Get the longest match
+            longest_match = max(matches, key=lambda match: len(match.group(0)))
+            new_code = longest_match.group(1).strip()
+            if new_code.startswith('```'): new_code = '\n'.join(new_code.split('\n')[1:])
+            if new_code.endswith('```'): new_code = '\n'.join(new_code.split('\n')[:-1])
             
             with open(FILEPATH, "w") as f:
                 f.write(new_code)
