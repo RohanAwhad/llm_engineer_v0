@@ -3,7 +3,7 @@ from brain import Brain
 from message import Message
 import re
 import argparse
-from llm_functions import get_input_from_user, llm_call
+from llm_functions import get_input_from_user, llm_call, summarize_conversation
 from tui.llm_engineer import LLMEngineer
 import os  # Importing os for file operations
 
@@ -48,7 +48,6 @@ def plan_composer(save_path: str) -> None:
                 if doc.endswith('```'): doc = ('\n'.join(doc.split('\n')[:-1])).strip()
                 # Save the composed plan using default filename
                 save_composer_output(doc, save_path)
-        exit(0)
 
 def plan_executor(plan_filename: str, workspace: str) -> None:
     """Executes the plan specified in the given filename."""
@@ -68,7 +67,7 @@ def plan_executor(plan_filename: str, workspace: str) -> None:
     # Render the template with the plan
     rendered_prompt = template.render(requirement_specification_doc=plan)
     history.append(Message('system', rendered_prompt))
-    history.append(Message('user', 'Hey there, Baby llm here. What are we building today?'))
+    history.append(Message('user', 'Hey there, Baby LLM here. What are we building today?'))
 
     brain = Brain(workspace)
 
@@ -81,12 +80,19 @@ def plan_executor(plan_filename: str, workspace: str) -> None:
         else:
             return get_input_from_user()
 
+    print('Starting execution ...')
+    iter = 0
     while True:
+        if len(history) > 10:
+            summary = summarize_conversation("NousResearch/Hermes-3-Llama-3.1-405B-Turbo", history, provider='together')
+            history = [history[0], Message('user', summary)] + history[-3:]
+
         # Use LLM to generate a message for the brain
-        llm_response = llm_call("gpt-4o-2024-08-06", history, temperature=0.8)
+        #llm_response = llm_call("claude-3-5-sonnet-20240620", history, temperature=0.8, provider='anthropic')
+        #llm_response = llm_call("Qwen/Qwen2-72B-Instruct", history, temperature=0.8, provider='together')
+        llm_response = llm_call("NousResearch/Hermes-3-Llama-3.1-405B-Turbo", history, temperature=0.8, provider='together', max_tokens=1024)
         print("COMPOSER MESSAGE")
         print(llm_response)
-        input('Press Enter to continue')
 
         history.append(Message('assistant', llm_response))
 
@@ -110,7 +116,10 @@ def plan_executor(plan_filename: str, workspace: str) -> None:
         if not brain_output: brain_output = '<NO MESSAGE FROM USER. INITIATE CONVERSATION>'
         user_message = Message('user', brain_output)
         history.append(user_message)
-        input('Press Enter to continue')
+        iter += 1
+        if iter % 10 == 0:
+            print('Iteration:', iter)
+            input('Press Enter to continue')
 
     print("Plan execution completed.")
 
@@ -134,9 +143,7 @@ if __name__ == "__main__":
         if os.path.exists(message_list_file):
             os.remove(message_list_file)
 
-    if args.tui:
-        LLMEngineer(workspace).run()
-    elif args.plan_composer:
+    if args.plan_composer:
         # Assuming plan_composer function saves the output in 'composer_plan.txt'
         if args.plan_executor:
             save_path = args.plan_executor
@@ -144,12 +151,14 @@ if __name__ == "__main__":
             save_path = 'composer_plan.txt'
         plan_composer(save_path)
 
-    elif args.plan_executor:
+    if args.plan_executor:
         # Logic to load and execute plan_executor with the file content
         with open(args.plan_executor, 'r') as f:
             plan_content = f.read()
         plan_executor(args.plan_executor, workspace)
-
+    elif args.tui:
+        LLMEngineer(workspace).run()
+        exit(0)
     else:
         brain = Brain(workspace)
         while True:

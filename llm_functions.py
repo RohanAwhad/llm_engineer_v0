@@ -1,5 +1,8 @@
 import dataclasses
+import difflib
+import json
 import openai
+import anthropic
 import os
 import re
 import requests  # Importing requests library for making HTTP requests
@@ -38,7 +41,7 @@ class SearchResult:
         )
 
 
-def llm_call(model: str, messages: list[Message], temperature: float) -> str:
+def llm_call(model: str, messages: list[Message], temperature: float, provider: str = 'openai', stop_tokens: str | list[str] | None = None, max_tokens: int = 4096) -> str:
     """
     Calls the OpenAI API to get a response based on the model and messages provided.
 
@@ -47,16 +50,86 @@ def llm_call(model: str, messages: list[Message], temperature: float) -> str:
     :param temperature: The temperature setting for randomness in the response.
     :return: The content of the response from the model.
     """
-    client = openai.OpenAI(
-        api_key=os.environ["OPENAI_API_KEY"]
-    )  # Initialize OpenAI client
-    res = client.chat.completions.create(
-        model=model,
-        messages=[dataclasses.asdict(x) for x in messages],
-        temperature=temperature,
-        max_tokens=4096,
-    )
-    return res.choices[0].message.content
+    # loop over messages, and see if consecutive user or assistant messages are present, if yes, then merge them into one with '\n\n' as sep
+    merged_messages = []
+    current_message = None
+
+    for message in messages:
+        if current_message is not None and message.role == current_message.role:
+            if isinstance(current_message.content, list):
+                if isinstance(message.content, list):
+                    current_message.content += message.content
+                else:
+                    current_message.content += [dict(type=text, text=message.content),]
+            else:
+                if isinstance(message.content, list):
+                    current_message.content = [dict(type=text, text=current_message.content),] + message.content
+                else:
+                    current_message.content += '\n' + message.content
+        else:
+            if current_message:
+                merged_messages.append(current_message)
+            current_message = message
+
+    if current_message:
+        merged_messages.append(current_message)
+    messages = merged_messages
+
+
+
+    if provider == 'anthropic':
+        client = anthropic.Anthropic(api_key=os.environ['ANTHROPIC_API_KEY'])
+        if messages[0].role == 'system':
+            system_msg = messages[0].content
+            messages = messages[1:]
+        # Send a message to Claude 3.5 Sonnet
+        response = client.messages.create(
+            model=model,
+            system=system_msg,
+            max_tokens=4096,
+            messages=[dataclasses.asdict(x) for x in messages],
+        )
+        # Print the response
+        return response.content[0].text
+    if provider == 'openai':
+        client = openai.OpenAI(
+            api_key=os.environ["OPENAI_API_KEY"]
+        )  # Initialize OpenAI client
+    elif provider == 'together':
+        client = openai.OpenAI(
+            api_key=os.environ["TOGETHER_API_KEY"],
+            base_url='https://api.together.xyz/v1'
+        )
+        new_messages = []
+        for x in messages:
+            content = []
+            if isinstance(x.content, list):
+                for c in x.content:
+                    if c['type'] == 'image':
+                        raise ValueError("Together doesn't have an image processor")
+                    content.append(c['text'].strip())
+                new_messages.append(Message(x.role, ('\n'.join(content)).strip()))
+            else:
+                new_messages.append(x)
+        messages = new_messages
+
+    if stop_tokens is None: stop_tokens = []
+    elif isinstance(stop_tokens, str): stop_tokens = [stop_tokens, ]
+    ret = ''
+    for _ in range(3):
+        res = client.chat.completions.create(
+            model=model,
+            messages=[dataclasses.asdict(x) for x in messages],
+            temperature=temperature,
+            max_tokens=max_tokens,
+            stop=stop_tokens,
+        )
+        # check for finish reason, and re-request, if needed
+        finish_reason = res.choices[0].finish_reason
+        if finish_reason == 'length':
+            messages = messages + [Message(role='assistant', content=res.choices[0].message.content), ]
+        else:
+            return ret + res.choices[0].message.content
 
 
 def search_brave(query: str, api_key: str, count: int = 10) -> List[SearchResult]:
@@ -168,6 +241,10 @@ def rewrite_file(workspace: str, filename: str, diff: str, update_logs: Callable
     If the file has content, then ask the llm to regenerate the whole file with either addition of the code or deletion.
     """
     FILEPATH = f"{workspace}/{filename}"
+
+    if not os.path.exists(os.path.dirname(FILEPATH)):
+        os.makedirs(os.path.dirname(FILEPATH))
+
     if not os.path.exists(FILEPATH):
         with open(FILEPATH, "w") as f:
             pass
@@ -180,8 +257,8 @@ def rewrite_file(workspace: str, filename: str, diff: str, update_logs: Callable
     ]
 
     with open(FILEPATH, "r") as f:
-        file_contents = f.read()
-    user_msg = f"CURRENT_FILE_CONTENTS:\n```\n{file_contents.strip()}\n```\n\n"
+        init_file_contents = f.read()
+    user_msg = f"CURRENT_FILE_CONTENTS:\n```\n{init_file_contents.strip()}\n```\n\n"
     user_msg += f"DIFF:\n```diff\n{diff.strip()}\n```\n\n"
 
     history.append(Message("user", user_msg))
@@ -208,24 +285,58 @@ def rewrite_file(workspace: str, filename: str, diff: str, update_logs: Callable
             
             with open(FILEPATH, "w") as f:
                 f.write(new_code)
-            
-            return None
+
+            with open(FILEPATH, 'r') as f:
+                post_file_contents = f.read()
+
+            diff = difflib.unified_diff(
+                init_file_contents.splitlines(),
+                post_file_contents.splitlines(),
+                fromfile="before",
+                tofile="after",
+            )
+            print("\n".join(diff))
+            return f"{filename} was successfully updated"
+
 
     return "Error: was unable to modify the contents"
 
 
+# a funciton that will take in messages list and ask llm to summarize the conversation uptill now into 3 main sections: Main Objective, Completed Tasks, In-Progress Tasks
+def summarize_conversation(model: str, messages: list[Message], provider: str = "openai") -> str:
+    """
+    Asks the LLM to summarize the conversation into 3 main sections: Main Objective, Completed Tasks, In-Progress Tasks.
+
+    :param messages: A list of Message objects containing the conversation history.
+    :return: The summary of the conversation from the LLM.
+    """
+    sys_prompt = '''
+You are a language model. I need you to summarize a conversation between a user and an assistant which is also a LM. The reason to summarize is because of context length limit of the assistant model.
+
+Keeping this in mind, I need you to summarize the conversation thats given by the current user. The conversation chain also includes the system prompt, and that is because I need you to summarize such that the task the assistant is performing doesn't get disturbed. There might also come a time, that the there is summarization already present, I need you to consider that too.
+
+Because the conversation might go on for hours on end, I need you to summarize the conversation such that the older completed tasks take up less context, compared to the most recent ongoing ones.
+
+Also, another important caveat, even with summarized context, the last 2 messages are still sent to the model, because they need to be concrete and detailed. So, when summarizing keep that in mind. You do not have to return those messages, the backend system will append them by itself. You need to just summarize.
+'''
+    history = [
+        Message("system", sys_prompt.strip()),
+        Message("user", json.dumps([dataclasses.asdict(x) for x in messages])),
+    ]
+
+    max_retries = 3
+    while max_retries > 0:
+        max_retries -= 1
+        llm_res = llm_call(model, history, temperature=0.8, provider=provider, max_tokens=1024)
+        print("\033[94m" + f"Summarization Assistant:{llm_res}" + "\033[0m")
+        return llm_res
+
+    return "Error: was unable to summarize the conversation"
+
+
 if __name__ == '__main__':
     # Example usage:
-    import os
-    api_key = os.environ['BRAVE_SEARCH_AI_API_KEY']
-    results = search_brave("What is the fastest way to sort a large dataset in Python?", api_key)
-    for result in results:
-        print(f"Title: {result.title}")
-        print(f"URL: {result.url}")
-        print(f"Description: {result.description}")
-        if result.extra_snippets:
-            print("Extra Snippets:")
-            for snippet in result.extra_snippets:
-                print(snippet)
-        print("\n")
-
+    with open('conversationData.json', 'r') as f:
+        chat = json.load(f)
+    messages = [Message('system', 'you are a helpful assistant. Help users with their queries'), ] + [Message(x['role'], x['content']) for x in chat]
+    print(summarize_conversation('gpt-4o', messages))

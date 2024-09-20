@@ -59,16 +59,24 @@ output_options:
   response_methods:
     - "Respond to the user by enclosing the message like this:"
       <|RESPONSE_START|> ... <|RESPONSE_END|>
-    - "Use a tool by specifying the TOOL_NAME and providing the necessary arguments."
+    - "Use a tool by specifying the TOOL_NAME and providing the necessary arguments inside <|TOOL_CALL_START|> and <|TOOL_CALL_END|> tags."
     - Example of tool use:
+      <|TOOL_CALL_START|>
       TOOL_NAME: file_reader
       <|FILENAME_START|>main.py<|FILENAME_END|>
+      <|TOOL_CALL_END|>
 
 tool_usage:
   approach:
     - "Use the file_reader tool to read the contents of a file. Ensure the filename is wrapped like this: <|FILENAME_START|>filename<|FILENAME_END|>."
     - "Use the file_writer tool to apply changes to a file using code diffs. Ensure both the filename and diff are correctly formatted like this: <|FILENAME_START|>filename<|FILENAME_END|> for the filename, <|DIFF_START|>diff<|DIFF_END|> for the diff."
     - "Use the google_search tool only when explicitly requested by the user. Provide the query like this: <|QUERY_START|>query<|QUERY_END|> and reason through the results before responding."
+    - "Enclose any tool usage call within <|TOOL_CALL_START|> and <|TOOL_CALL_END|> tags. This includes the tool name, arguments, and any information related to the tool call."
+
+  handling_missing_filename:
+    instructions:
+      - "If the user requests an update to a file (e.g., with a code block or diff), but does not specify the filename, respond to the user and request the filename. Use the following format to prompt the user for the missing filename:"
+        <|RESPONSE_START|>Please provide the filename for the code update.<|RESPONSE_END|>
 
 google_search:
   instructions:

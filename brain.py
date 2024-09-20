@@ -2,7 +2,7 @@ import os
 import re
 from typing import Callable
 from message import Message, MessageToPrint
-from llm_functions import get_input_from_user, llm_call, rewrite_file, search_brave
+from llm_functions import get_input_from_user, llm_call, rewrite_file, search_brave, summarize_conversation
 
 
 class Brain:
@@ -13,6 +13,7 @@ class Brain:
         self.max_retries = self.MAX_RETRIES
         self.user_turn = True
 
+        self.tool_call_ptrn = re.compile(r'<\|TOOL_CALL_START\|>(.*?)<\|TOOL_CALL_END\|>', re.DOTALL)
         self.tool_name_ptrn = re.compile(r"TOOL_NAME: ([\d\w]+)", re.DOTALL)
         self.diff_ptrn = re.compile(r"<\|DIFF_START\|>(.*?)<\|DIFF_END\|>", re.DOTALL)
         self.response_ptrn = re.compile(r"<\|RESPONSE_START\|>(.*?)<\|RESPONSE_END\|>", re.DOTALL)
@@ -34,14 +35,12 @@ class Brain:
                 file_contents = f.read()
             self.history.extend(
                 [
-                    Message("assistant", llm_res),
                     Message("user", f"File Contents:\n\n```\n{file_contents}\n```"),
                 ]
             )
         else:
             self.history.extend(
                 [
-                    Message("assistant", llm_res),
                     Message(
                         "user",
                         "File does not exist. If you want to add content just call file writer. It will handle creation",
@@ -53,7 +52,6 @@ class Brain:
         out = rewrite_file(self.workspace, filename, diff, update_logs)
         self.history.extend(
             [
-                Message("assistant", llm_res),
                 Message("user", f"TOOL_OUTPUT:\n\n{out}"),
             ]
         )
@@ -66,7 +64,6 @@ class Brain:
         # Append the search results to the history
         self.history.extend(
             [
-                Message("assistant", llm_res),
                 Message("user", f"SEARCH_RESULTS:\n\n{formatted_results}"),
             ]
         )
@@ -74,6 +71,7 @@ class Brain:
             update_logs(MessageToPrint(f'Search results for query: "{query}"', formatted_results, "grey85"))
 
     def run(self, user_msg: Message, update_logs: Callable | None = None) -> str | None:
+
         self.history.append(user_msg)
         user_turn = False
         max_retries = self.MAX_RETRIES
@@ -81,57 +79,76 @@ class Brain:
         api_key = os.environ['BRAVE_SEARCH_AI_API_KEY']
 
         while not user_turn:
+            # check if history is more than 10, and then summarize the histor
+            if len(self.history) > 10:
+                summary = summarize_conversation("NousResearch/Hermes-3-Llama-3.1-405B-Turbo", self.history, provider='together')
+                self.history = [self.history[0], Message('user', summary)] + self.history[-3:]
+
+
             print(f"\033[93m{self.history[-1]}\033[0m")
-            llm_res = llm_call("gpt-4o-2024-08-06", self.history, temperature=0.8)
+            #llm_res = llm_call("claude-3-5-sonnet-20240620", self.history, temperature=0.8, provider='anthropic')
+            #llm_res = llm_call("Qwen/Qwen2-72B-Instruct", self.history, temperature=0.8, provider='together')
+            llm_res = llm_call("NousResearch/Hermes-3-Llama-3.1-405B-Turbo", self.history, temperature=0.8, provider='together', max_tokens=1024)
             print("\033[95m" + str(llm_res) + "\033[0m")
             if update_logs:
                 update_logs(MessageToPrint('Brain Raw Response', llm_res, "light_yellow3"))
 
-            tool_name_match = re.search(self.tool_name_ptrn, llm_res)
-            if tool_name_match:
-                tool_name = tool_name_match.group(1)
+            tool_calls = re.findall(self.tool_call_ptrn, llm_res)
+            if tool_calls:
+                self.history.append(Message('assistant', llm_res))
+                user_turn = False
+                max_retries = self.MAX_RETRIES
+                for tool_call in tool_calls:
+                    print('TOOL CALL:', tool_call)
+                    tool_name_match = re.search(self.tool_name_ptrn, tool_call)
+                    if tool_name_match:
+                        tool_name = tool_name_match.group(1)
 
-                # New Google Search Tool handling
-                if tool_name == "google_search":
-                    query_match = re.search(self.query_ptrn, llm_res)
-                    if query_match:
-                        query = query_match.group(1).strip()
-                        self.process_search_google(query, llm_res, api_key, update_logs)
-                        user_turn = False
-                        max_retries = self.MAX_RETRIES
-                    else:
-                        user_turn = False
-                        max_retries -= 1
+                        # New Google Search Tool handling
+                        if tool_name == "google_search":
+                            query_match = re.search(self.query_ptrn, tool_call)
+                            if query_match:
+                                query = query_match.group(1).strip()
+                                self.process_search_google(query, tool_call, api_key, update_logs)
+                                user_turn = False
+                                max_retries = self.MAX_RETRIES
+                            else:
+                                self.history.append(Message('user', f"<|TOOL_RESPONSE_START|>Error: Unable to parse query for google_search tool.|<|TOOL_RESPONSE_END|>"))
+                                user_turn = False
+                                max_retries -= 1
 
-                elif tool_name == "file_reader":
-                    filename_match = re.search(self.filename_ptrn, llm_res)
-                    if filename_match:
-                        filename = filename_match.group(1).strip()
-                        self.process_file_reader(filename, llm_res)
-                        if update_logs:
-                            update_logs(MessageToPrint(f'Contents of: "{filename}"', self.history[-1].content, "grey85"))
-                        user_turn = False
-                        max_retries = self.MAX_RETRIES
-                    else:
-                        user_turn = False
-                        max_retries -= 1
+                        elif tool_name == "file_reader":
+                            filename_match = re.search(self.filename_ptrn, tool_call)
+                            if filename_match:
+                                filename = filename_match.group(1).strip()
+                                self.process_file_reader(filename, tool_call)
+                                if update_logs:
+                                    update_logs(MessageToPrint(f'Contents of: "{filename}"', self.history[-1].content, "grey85"))
+                                user_turn = False
+                                max_retries = self.MAX_RETRIES
+                            else:
+                                self.history.append(Message('user', f"<|TOOL_RESPONSE_START|>Error: Unable to parse filename for file_reader tool.|<|TOOL_RESPONSE_END|>"))
+                                user_turn = False
+                                max_retries -= 1
 
-                elif tool_name == "file_writer":
-                    filename_match = re.search(self.filename_ptrn, llm_res)
-                    diff_match = re.search(self.diff_ptrn, llm_res)
-                    if filename_match and diff_match:
-                        filename = filename_match.group(1).strip()
-                        diff = diff_match.group(1).strip()
-                        self.process_file_writer(filename, diff, llm_res, update_logs)
-                        user_turn = False
-                        max_retries = self.MAX_RETRIES
-                    else:
-                        user_turn = False
-                        max_retries -= 1
+                        elif tool_name == "file_writer":
+                            filename_match = re.search(self.filename_ptrn, tool_call)
+                            diff_match = re.search(self.diff_ptrn, tool_call)
+                            if filename_match and diff_match:
+                                filename = filename_match.group(1).strip()
+                                diff = diff_match.group(1).strip()
+                                self.process_file_writer(filename, diff, tool_call, update_logs)
+                                user_turn = False
+                                max_retries = self.MAX_RETRIES
+                            else:
+                                self.history.append(Message('user', f"<|TOOL_RESPONSE_START|>Error: Unable to parse filename or diff for file_writer tool.|<|TOOL_RESPONSE_END|>"))
+                                user_turn = False
+                                max_retries -= 1
 
-                else:
-                    user_turn = False
-                    max_retries -= 1
+                        else:
+                            self.history.append(Message('user', f"<|TOOL_RESPONSE_START|>Error: Unknown tool '{tool_name}'.|<|TOOL_RESPONSE_END|>"))
+                            user_turn = False
+                            max_retries -= 1
 
             else:
                 response_match = re.search(self.response_ptrn, llm_res)
