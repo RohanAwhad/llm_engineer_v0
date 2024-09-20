@@ -5,6 +5,12 @@ This project is a command-line tool leveraging language models to compose and ex
 ## TODOs:
 - [ ] Add a way to set the models for each of the interaction dynamically
   - [ ] The human-facing model should always have the ability to process image
+- [ ] Extend the functionality of Plan composer and/or executor to also work on an existing project
+
+## Distinctions between different agents:
+- **Brain**: You give it a task like add a feature, and it will do it, for a particular file. You need to know what to update.
+- **Plan Composer**: You chat with this model, and come up with a requirement specification doc __for a new project__.
+- **Plan Executor**: Take the plan and build the project from scratch editing multiple files with brain, and getting the starter code setup
 
 ## Features
 
