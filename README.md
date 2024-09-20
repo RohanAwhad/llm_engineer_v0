@@ -2,6 +2,10 @@
 
 This project is a command-line tool leveraging language models to compose and execute plans or scripts. It facilitates automation and development tasks by integrating LLM capabilities and web search functionalities.
 
+## TODOs:
+- [ ] Add a way to set the models for each of the interaction dynamically
+  - [ ] The human-facing model should always have the ability to process image
+
 ## Features
 
 - **Plan Composition:** Compose and save plans using a command-line interface.
