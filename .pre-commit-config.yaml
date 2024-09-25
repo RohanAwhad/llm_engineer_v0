@@ -16,9 +16,4 @@ repos:
     rev: v1.11.2
     hooks:
     -   id: mypy
-        name: mypy type checking
-        entry: bash -c "mypy || echo 'mypy check failed but continuing...'"
-        language: python
-        pass_filenames: false
-        always_run: true
         args: ["--strict", "--ignore-missing-imports", "--config-file", "mypy.ini"]
