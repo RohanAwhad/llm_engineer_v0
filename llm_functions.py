@@ -60,10 +60,10 @@ def llm_call(model: str, messages: list[Message], temperature: float, provider: 
                 if isinstance(message.content, list):
                     current_message.content += message.content
                 else:
-                    current_message.content += [dict(type=text, text=message.content),]
+                    current_message.content += [dict(type='text', text=message.content),]
             else:
                 if isinstance(message.content, list):
-                    current_message.content = [dict(type=text, text=current_message.content),] + message.content
+                    current_message.content = [dict(type='text', text=current_message.content),] + message.content
                 else:
                     current_message.content += '\n' + message.content
         else:
@@ -74,8 +74,6 @@ def llm_call(model: str, messages: list[Message], temperature: float, provider: 
     if current_message:
         merged_messages.append(current_message)
     messages = merged_messages
-
-
 
     if provider == 'anthropic':
         client = anthropic.Anthropic(api_key=os.environ['ANTHROPIC_API_KEY'])
