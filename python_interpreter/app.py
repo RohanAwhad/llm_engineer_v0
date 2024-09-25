@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, Any
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from uuid import uuid4
@@ -27,7 +27,7 @@ def create_session() -> CreateSessionResponse:
 
 
 @app.post("/execute_code")  # type: ignore
-def execute_code(request: ExecuteCodeRequest) -> str:
+def execute_code(request: ExecuteCodeRequest) -> Any:
   session_id = request.session_id
   code = request.code
   if session_id not in sessions:
@@ -46,6 +46,9 @@ def execute_code(request: ExecuteCodeRequest) -> str:
       result = reply['content'].get('name', '')
       if 'text' in reply['content']:
         result = reply['content']['text']
+
+  if isinstance(result, dict) and 'data' in result and 'text/plain' in result['data']:
+    return result['data']['text/plain']
   return result
 
 
