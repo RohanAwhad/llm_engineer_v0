@@ -8,16 +8,16 @@ app = FastAPI()
 sessions: Dict[str, KernelManager] = {}
 
 
-class CreateSessionResponse(BaseModel):
+class CreateSessionResponse(BaseModel):  # type: ignore
   session_id: str
 
 
-class ExecuteCodeRequest(BaseModel):
+class ExecuteCodeRequest(BaseModel):  # type: ignore
   code: str
   session_id: str
 
 
-@app.post("/create_session", response_model=CreateSessionResponse)
+@app.post("/create_session", response_model=CreateSessionResponse)  # type: ignore
 def create_session() -> CreateSessionResponse:
   session_id = str(uuid4())
   km = KernelManager()
@@ -26,7 +26,7 @@ def create_session() -> CreateSessionResponse:
   return CreateSessionResponse(session_id=session_id)
 
 
-@app.post("/execute_code")
+@app.post("/execute_code")  # type: ignore
 def execute_code(request: ExecuteCodeRequest) -> str:
   session_id = request.session_id
   code = request.code
@@ -49,7 +49,7 @@ def execute_code(request: ExecuteCodeRequest) -> str:
   return result
 
 
-@app.on_event("shutdown")
+@app.on_event("shutdown")  # type: ignore
 def shutdown_event() -> None:
   for session_id, km in sessions.items():
     km.shutdown_kernel()
